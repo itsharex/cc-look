@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+release/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# SQLite
+*.db
+*.db-wal
+*.db-shm
+
+# Test
+coverage/
+
+# Claude Code
+.claude/
+
+# Development docs (internal)
+DEVELOPMENT_PLAN.md

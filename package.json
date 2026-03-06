@@ -1,0 +1,66 @@
+{
+  "name": "cc-look",
+  "version": "1.0.0",
+  "description": "CC Look - 本地 AI API 代理软件 - 支持多平台 AI API 监控与调试",
+  "main": "./out/main/index.js",
+  "author": "CC Look Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/onekb/cc-look.git"
+  },
+  "homepage": "https://github.com/onekb/cc-look#readme",
+  "bugs": {
+    "url": "https://github.com/onekb/cc-look/issues"
+  },
+  "keywords": [
+    "ai",
+    "api-proxy",
+    "openai",
+    "claude",
+    "anthropic",
+    "debugging",
+    "monitoring",
+    "electron",
+    "desktop-app"
+  ],
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "start": "electron-vite preview",
+    "postinstall": "electron-builder install-app-deps",
+    "build:unpack": "npm run build && electron-builder --dir",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "express": "^4.21.2",
+    "http-proxy-middleware": "^3.0.3",
+    "sql.js": "^1.14.1",
+    "uuid": "^11.0.3",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "postcss": "^8.4.49",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

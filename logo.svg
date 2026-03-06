@@ -1,0 +1,9 @@
+<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- 放大镜外框（正方形内居中圆形） -->
+  <circle cx="50" cy="50" r="40" fill="none" stroke="#333333" stroke-width="2"/>
+  <!-- 放大镜手柄 -->
+  <line x1="70" y1="70" x2="85" y2="85" stroke="#333333" stroke-width="2"/>
+  <!-- 内部双 C（黄色高亮） -->
+  <path d="M40 50 C40 40 48 32 58 32 C68 32 76 40 76 50 C76 60 68 68 58 68 C48 68 40 60 40 50 Z" fill="#FFD166" opacity="0.8"/>
+  <path d="M48 50 C48 44 52 38 58 38 C64 38 68 44 68 50 C68 56 64 62 58 62 C52 62 48 56 48 50 Z" fill="#333333"/>
+</svg>

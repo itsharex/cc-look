@@ -355,6 +355,7 @@ export class ProxyManager {
     // 汇总流式输出的内容
     let aggregatedContent = ''
     let aggregatedThinking = ''  // 思考内容
+    let aggregatedToolCalls: any[] = []  // 工具调用
     let aggregatedUsage: any = null
     let aggregatedCacheReadInputTokens: number | null = null
     let aggregatedModel: string | null = null
@@ -409,6 +410,29 @@ export class ProxyManager {
           aggregatedUsage = parsed.usage
         }
 
+        // OpenAI 工具调用格式
+        if (parsed.choices?.[0]?.delta?.tool_calls) {
+          for (const toolCall of parsed.choices[0].delta.tool_calls) {
+            const index = toolCall.index ?? aggregatedToolCalls.length
+            if (!aggregatedToolCalls[index]) {
+              aggregatedToolCalls[index] = { id: '', type: 'function', function: { name: '', arguments: '' } }
+            }
+            if (toolCall.id) {
+              aggregatedToolCalls[index].id = toolCall.id
+            }
+            if (toolCall.type) {
+              aggregatedToolCalls[index].type = toolCall.type
+            }
+            if (toolCall.function?.name) {
+              aggregatedToolCalls[index].function.name = toolCall.function.name
+            }
+            if (toolCall.function?.arguments) {
+              aggregatedToolCalls[index].function.arguments += toolCall.function.arguments
+            }
+            outputTokenCount++
+          }
+        }
+
         // Anthropic 格式
         if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
           aggregatedContent += parsed.delta.text
@@ -418,6 +442,25 @@ export class ProxyManager {
         if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'thinking_delta' && parsed.delta?.thinking) {
           aggregatedThinking += parsed.delta.thinking
           outputTokenCount++
+        }
+        // Anthropic 工具调用格式 - 开始 (支持 tool_use 和 server_tool_use)
+        if (parsed.type === 'content_block_start' &&
+            (parsed.content_block?.type === 'tool_use' || parsed.content_block?.type === 'server_tool_use')) {
+          const index = parsed.index ?? aggregatedToolCalls.length
+          aggregatedToolCalls[index] = {
+            id: parsed.content_block.id || '',
+            type: parsed.content_block.type,  // 保留原始类型
+            name: parsed.content_block.name || '',
+            input: ''
+          }
+        }
+        // Anthropic 工具调用格式 - 增量
+        if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'input_json_delta') {
+          const index = parsed.index ?? 0
+          if (aggregatedToolCalls[index]) {
+            aggregatedToolCalls[index].input += parsed.delta.partial_json || ''
+            outputTokenCount++
+          }
         }
         if (parsed.type === 'message_start' && parsed.message) {
           if (parsed.message.id) aggregatedId = parsed.message.id
@@ -449,8 +492,10 @@ export class ProxyManager {
     const hasContent = (parsed: any): boolean => {
       // OpenAI 格式
       if (parsed.choices?.[0]?.delta?.content) return true
+      if (parsed.choices?.[0]?.delta?.tool_calls) return true
       // Anthropic 格式
       if (parsed.type === 'content_block_delta' && parsed.delta?.text) return true
+      if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'input_json_delta') return true
       return false
     }
 
@@ -496,6 +541,30 @@ export class ProxyManager {
       if (aggregatedRole) result.role = aggregatedRole
       if (aggregatedThinking) result.thinking = aggregatedThinking
       if (aggregatedContent) result.content = aggregatedContent
+      if (aggregatedToolCalls.length > 0) {
+        // 解析 Anthropic 格式的 input JSON 字符串
+        result.tool_calls = aggregatedToolCalls.map(tc => {
+          if (tc.input && typeof tc.input === 'string') {
+            try {
+              return { ...tc, input: JSON.parse(tc.input) }
+            } catch {
+              return tc
+            }
+          }
+          // OpenAI 格式的 arguments 也是字符串，需要解析
+          if (tc.function?.arguments && typeof tc.function.arguments === 'string') {
+            try {
+              return {
+                ...tc,
+                function: { ...tc.function, arguments: JSON.parse(tc.function.arguments) }
+              }
+            } catch {
+              return tc
+            }
+          }
+          return tc
+        })
+      }
       if (aggregatedFinishReason) result.finish_reason = aggregatedFinishReason
       if (aggregatedUsage) result.usage = aggregatedUsage
 

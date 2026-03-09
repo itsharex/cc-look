@@ -166,10 +166,20 @@ export default function Settings() {
         {/* About */}
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <h3 className="font-medium text-gray-900 mb-3">关于</h3>
-          <div className="text-sm text-gray-600 space-y-1">
-            <p>CC Look v1.0.0</p>
-            <p>本地 AI API 代理软件</p>
-            <p className="text-gray-400">© 2024 CC Look Team</p>
+          <div className="text-sm text-gray-600 space-y-2">
+            <p className="font-medium">CC Look v1.0.1</p>
+            <p>本地 AI API 代理软件 - 开源免费</p>
+            <p>
+              <a
+                href="https://github.com/onekb/cc-look"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                https://github.com/onekb/cc-look
+              </a>
+            </p>
+            <p className="text-gray-400">MIT License © 2025 CC Look Team</p>
           </div>
         </div>
       </div>

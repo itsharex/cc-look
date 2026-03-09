@@ -17,9 +17,9 @@ const api = {
 
   // 代理服务
   proxy: {
-    start: (platformId: string) => ipcRenderer.invoke(IPC_CHANNELS.PROXY_START, platformId) as Promise<boolean>,
-    stop: (platformId: string) => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STOP, platformId) as Promise<boolean>,
-    status: (platformId: string) => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STATUS, platformId) as Promise<PlatformProxy | null>,
+    startGlobal: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_START) as Promise<boolean>,
+    stopGlobal: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STOP) as Promise<boolean>,
+    getGlobalState: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STATUS) as Promise<{ isRunning: boolean; port: number }>,
     onStream: (callback: (event: StreamEvent) => void) => {
       const handler = (_: unknown, data: StreamEvent) => callback(data)
       ipcRenderer.on(IPC_CHANNELS.PROXY_STREAM, handler)

@@ -38,6 +38,11 @@ export class ProxyManager {
     return this.port
   }
 
+  // 获取运行状态
+  getIsRunning(): boolean {
+    return this.isRunning
+  }
+
   // 添加或更新平台
   registerPlatform(platform: Platform): void {
     this.platforms.set(platform.id, platform)

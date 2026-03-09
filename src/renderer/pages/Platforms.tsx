@@ -17,14 +17,15 @@ const initialFormData: PlatformFormData = {
 }
 
 export default function Platforms() {
-  const { platforms, loading, fetchPlatforms, createPlatform, deletePlatform, startProxy, stopProxy, proxyStatuses } = usePlatformStore()
+  const { platforms, loading, fetchPlatforms, createPlatform, deletePlatform, proxyState, fetchProxyState, startProxy, stopProxy } = usePlatformStore()
   const [showModal, setShowModal] = useState(false)
   const [formData, setFormData] = useState<PlatformFormData>(initialFormData)
   const [editingPlatform, setEditingPlatform] = useState<Platform | null>(null)
 
   useEffect(() => {
     fetchPlatforms()
-  }, [fetchPlatforms])
+    fetchProxyState()
+  }, [fetchPlatforms, fetchProxyState])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -66,12 +67,11 @@ export default function Platforms() {
     }
   }
 
-  const handleToggleProxy = async (platform: Platform) => {
-    const status = proxyStatuses.get(platform.id)
-    if (status?.status === 'running') {
-      await stopProxy(platform.id)
+  const handleToggleProxy = async () => {
+    if (proxyState.isRunning) {
+      await stopProxy()
     } else {
-      await startProxy(platform.id)
+      await startProxy()
     }
   }
 
@@ -106,6 +106,60 @@ export default function Platforms() {
         </button>
       </div>
 
+      {/* Proxy Status Card */}
+      <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* Status Indicator */}
+            <div className="flex flex-col items-center">
+              <span className={`status-dot ${proxyState.isRunning ? 'running' : 'stopped'}`}></span>
+              <span className="text-xs text-gray-500 mt-1">
+                {proxyState.isRunning ? '运行中' : '已停止'}
+              </span>
+            </div>
+
+            {/* Proxy Info */}
+            <div>
+              <h3 className="font-semibold text-gray-900">代理服务</h3>
+              <div className="text-sm text-gray-500 mt-1">
+                <span className="font-mono">http://localhost:{proxyState.port}</span>
+                <span className="mx-2">•</span>
+                <span>{platforms.length} 个平台已配置</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Toggle Button */}
+          <button
+            onClick={handleToggleProxy}
+            className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${
+              proxyState.isRunning
+                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                : 'bg-green-100 text-green-700 hover:bg-green-200'
+            }`}
+          >
+            {proxyState.isRunning ? '停止服务' : '启动服务'}
+          </button>
+        </div>
+
+        {/* Running Status Details */}
+        {proxyState.isRunning && platforms.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <p className="text-sm text-gray-500 mb-2">可用路径：</p>
+            <div className="flex flex-wrap gap-2">
+              {platforms.map((platform) => (
+                <code
+                  key={platform.id}
+                  className="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700"
+                >
+                  http://localhost:{proxyState.port}{platform.pathPrefix}
+                </code>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Platform List */}
       {loading ? (
         <div className="flex justify-center items-center h-64">
@@ -123,100 +177,58 @@ export default function Platforms() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {platforms.map((platform) => {
-            const proxyStatus = proxyStatuses.get(platform.id)
-            const isRunning = proxyStatus?.status === 'running'
-
-            return (
-              <div
-                key={platform.id}
-                className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    {/* Status Indicator */}
-                    <div className="flex flex-col items-center">
-                      <span className={`status-dot ${isRunning ? 'running' : 'stopped'}`}></span>
-                      <span className="text-xs text-gray-500 mt-1">
-                        {isRunning ? '运行中' : '已停止'}
+          {platforms.map((platform) => (
+            <div
+              key={platform.id}
+              className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center justify-between">
+                {/* Platform Info */}
+                <div className="flex items-center gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-gray-900">{platform.name}</h3>
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                        {getProtocolLabel(platform.protocol)}
                       </span>
                     </div>
-
-                    {/* Platform Info */}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-900">{platform.name}</h3>
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
-                          {getProtocolLabel(platform.protocol)}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        <span className="font-mono">{proxyStatus?.localUrl || `http://localhost:3100${platform.pathPrefix}`}</span>
-                        <span className="mx-2">→</span>
-                        <span className="font-mono">{platform.baseUrl}</span>
-                      </div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      <span className="font-mono text-primary-600">/{platform.pathPrefix.replace('/', '')}</span>
+                      <span className="mx-2">→</span>
+                      <span className="font-mono">{platform.baseUrl}</span>
                     </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleProxy(platform)}
-                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        isRunning
-                          ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                          : 'bg-green-100 text-green-700 hover:bg-green-200'
-                      }`}
-                    >
-                      {isRunning ? '停止' : '启动'}
-                    </button>
-                    <button
-                      onClick={() => handleEdit(platform)}
-                      className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      onClick={() => handleDelete(platform.id)}
-                      className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                    >
-                      删除
-                    </button>
                   </div>
                 </div>
 
-                {/* Local URL Copy & Usage Example */}
-                {isRunning && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
-                    {/* API 地址 */}
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-gray-500">本地 API 地址:</span>
-                      <code className="px-2 py-1 bg-gray-100 rounded text-primary-600 font-mono text-xs">
-                        {proxyStatus?.localUrl}
-                      </code>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(proxyStatus?.localUrl || '')
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                        title="复制地址"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
-                    </div>
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEdit(platform)}
+                    className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    onClick={() => handleDelete(platform.id)}
+                    className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
 
-                    {/* 使用示例 */}
-                    <div className="bg-gray-900 rounded-md p-3 text-xs font-mono text-gray-300 overflow-x-auto">
-                      <div className="text-gray-500 mb-2"># curl 示例</div>
-                      <pre className="whitespace-pre-wrap break-all">
-{platform.protocol === 'openai' ? `curl ${proxyStatus?.localUrl}/v1/chat/completions \\
+              {/* Usage Example (when proxy is running) */}
+              {proxyState.isRunning && (
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <div className="bg-gray-900 rounded-md p-3 text-xs font-mono text-gray-300 overflow-x-auto">
+                    <div className="text-gray-500 mb-2"># {platform.name} API 示例</div>
+                    <pre className="whitespace-pre-wrap break-all">
+{platform.protocol === 'openai' ? `curl http://localhost:${proxyState.port}${platform.pathPrefix}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-4",
     "messages": [{"role": "user", "content": "Hello!"}]
-  }'` : `curl ${proxyStatus?.localUrl}/v1/messages \\
+  }'` : `curl http://localhost:${proxyState.port}${platform.pathPrefix}/v1/messages \\
   -H "Content-Type: application/json" \\
   -H "anthropic-version: 2023-06-01" \\
   -d '{
@@ -224,13 +236,12 @@ export default function Platforms() {
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Hello, Claude"}]
   }'`}
-                      </pre>
-                    </div>
+                    </pre>
                   </div>
-                )}
-              </div>
-            )
-          })}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

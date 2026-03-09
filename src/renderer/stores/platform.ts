@@ -13,23 +13,29 @@ export interface ActiveRequest {
   status: 'pending' | 'streaming' | 'error'
 }
 
+// 代理服务状态
+export interface ProxyState {
+  isRunning: boolean
+  port: number
+}
+
 interface LogState {
   platforms: Platform[]
   logs: RequestLog[]
   activeRequests: ActiveRequest[]
   loading: boolean
 
+  // 代理服务状态（统一）
+  proxyState: ProxyState
+  fetchProxyState: () => Promise<void>
+  startProxy: () => Promise<void>
+  stopProxy: () => Promise<void>
+
   // 平台管理
   fetchPlatforms: () => Promise<void>
   createPlatform: (platform: Omit<Platform, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Platform>
   updatePlatform: (id: string, updates: Partial<Platform>) => Promise<void>
   deletePlatform: (id: string) => Promise<void>
-
-  // 代理服务
-  startProxy: (platformId: string) => Promise<void>
-  stopProxy: (platformId: string) => Promise<void>
-  getProxyStatus: (platformId: string) => Promise<{ status: string; localUrl: string } | null>
-  proxyStatuses: Map<string, { status: string; localUrl: string }>
 
   // 日志管理
   fetchLogs: (limit?: number) => Promise<void>
@@ -56,7 +62,37 @@ export const useLogStore = create<LogState>((set, get) => ({
   logs: [],
   activeRequests: [],
   loading: false,
-  proxyStatuses: new Map(),
+  proxyState: { isRunning: false, port: 3100 },
+
+  // ==================== 代理服务（统一） ====================
+
+  fetchProxyState: async () => {
+    try {
+      const settings = await window.api.settings.get()
+      const state = await window.api.proxy.getGlobalState()
+      set({ proxyState: { isRunning: state.isRunning, port: settings.proxyPort || 3100 } })
+    } catch (error) {
+      console.error('Failed to fetch proxy state:', error)
+    }
+  },
+
+  startProxy: async () => {
+    try {
+      await window.api.proxy.startGlobal()
+      await get().fetchProxyState()
+    } catch (error) {
+      console.error('Failed to start proxy:', error)
+    }
+  },
+
+  stopProxy: async () => {
+    try {
+      await window.api.proxy.stopGlobal()
+      await get().fetchProxyState()
+    } catch (error) {
+      console.error('Failed to stop proxy:', error)
+    }
+  },
 
   // ==================== 平台管理 ====================
 
@@ -65,11 +101,6 @@ export const useLogStore = create<LogState>((set, get) => ({
     try {
       const platforms = await window.api.platform.getAll()
       set({ platforms, loading: false })
-
-      // 获取所有平台的代理状态
-      for (const platform of platforms) {
-        get().getProxyStatus(platform.id)
-      }
     } catch (error) {
       console.error('Failed to fetch platforms:', error)
       set({ loading: false })
@@ -97,38 +128,8 @@ export const useLogStore = create<LogState>((set, get) => ({
     await window.api.platform.delete(id)
     set((state) => ({
       platforms: state.platforms.filter((p) => p.id !== id),
-      logs: state.logs.filter((l) => l.platformId !== id),
-      proxyStatuses: new Map([...state.proxyStatuses].filter(([k]) => k !== id))
+      logs: state.logs.filter((l) => l.platformId !== id)
     }))
-  },
-
-  // ==================== 代理服务 ====================
-
-  startProxy: async (platformId) => {
-    await window.api.proxy.start(platformId)
-    await get().getProxyStatus(platformId)
-  },
-
-  stopProxy: async (platformId) => {
-    await window.api.proxy.stop(platformId)
-    await get().getProxyStatus(platformId)
-  },
-
-  getProxyStatus: async (platformId) => {
-    try {
-      const status = await window.api.proxy.status(platformId)
-      set((state) => {
-        const newStatuses = new Map(state.proxyStatuses)
-        if (status) {
-          newStatuses.set(platformId, { status: status.status, localUrl: status.localUrl || '' })
-        } else {
-          newStatuses.set(platformId, { status: 'stopped', localUrl: '' })
-        }
-        return { proxyStatuses: newStatuses }
-      })
-    } catch (error) {
-      console.error('Failed to get proxy status:', error)
-    }
   },
 
   // ==================== 日志管理 ====================

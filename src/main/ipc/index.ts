@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
-import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy, type UpdateCheckResult, DEFAULT_SETTINGS } from '@shared/types'
+import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type UpdateCheckResult, DEFAULT_SETTINGS } from '@shared/types'
 import * as db from '../database'
 import { ProxyManager } from '../proxy'
 import { floatingWindowManager } from '../floatingWindow'
@@ -63,21 +63,19 @@ export function setupIpcHandlers(): void {
     return db.updatePlatform(id, { enabled: !platform.enabled })
   })
 
-  // ==================== 代理服务 ====================
+  // ==================== 代理服务（统一管理） ====================
 
-  ipcMain.handle(IPC_CHANNELS.PROXY_START, async (_, platformId: string): Promise<boolean> => {
-    console.log(`[IPC] 启动代理: ${platformId}`)
-    const platform = db.getPlatformById(platformId)
-    if (!platform) {
-      console.error(`[IPC] 平台不存在: ${platformId}`)
-      dialog.showErrorBox('启动失败', `平台不存在: ${platformId}`)
-      return false
+  // 启动代理服务（注册所有平台）
+  ipcMain.handle(IPC_CHANNELS.PROXY_START, async (): Promise<boolean> => {
+    console.log('[IPC] 启动代理服务')
+
+    // 注册所有启用的平台
+    const platforms = db.getAllPlatforms().filter(p => p.enabled)
+    for (const platform of platforms) {
+      proxyManager.registerPlatform(platform)
     }
 
-    // 注册平台到代理管理器
-    proxyManager.registerPlatform(platform)
-
-    // 启动代理服务器（如果还没启动的话）
+    // 启动代理服务器
     const success = await proxyManager.start(mainWindow)
     if (!success) {
       dialog.showErrorBox('启动失败', `无法启动代理服务，端口 ${proxyManager.getPort()} 可能已被占用`)
@@ -85,17 +83,18 @@ export function setupIpcHandlers(): void {
     return success
   })
 
-  ipcMain.handle(IPC_CHANNELS.PROXY_STOP, (_, platformId: string): boolean => {
-    console.log(`[IPC] 停止代理: ${platformId}`)
-    // 注销平台
-    proxyManager.unregisterPlatform(platformId)
-    // 如果没有平台了，停止服务器
-    // 注意：这里我们保持服务器运行，只是取消注册该平台
-    return true
+  // 停止代理服务
+  ipcMain.handle(IPC_CHANNELS.PROXY_STOP, (): boolean => {
+    console.log('[IPC] 停止代理服务')
+    return proxyManager.stop()
   })
 
-  ipcMain.handle(IPC_CHANNELS.PROXY_STATUS, (_, platformId: string): PlatformProxy | null => {
-    return proxyManager.getStatus(platformId)
+  // 获取代理服务状态
+  ipcMain.handle(IPC_CHANNELS.PROXY_STATUS, (): { isRunning: boolean; port: number } => {
+    return {
+      isRunning: proxyManager.getIsRunning(),
+      port: proxyManager.getPort()
+    }
   })
 
   // ==================== 日志管理 ====================

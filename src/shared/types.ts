@@ -120,5 +120,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   proxyPort: 3100,
   autoStart: false,
   minimizeToTray: true,
-  floatingWindow: false
+  floatingWindow: true
 }

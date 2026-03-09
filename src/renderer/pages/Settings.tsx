@@ -159,7 +159,7 @@ export default function Settings() {
                 className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
               />
               <div>
-                <span className="text-sm text-gray-700">启用桌面歌词浮动窗口</span>
+                <span className="text-sm text-gray-700">启用动态浮动窗口</span>
                 <p className="text-xs text-gray-400 mt-0.5">流式响应时显示半透明浮动窗口，可拖拽</p>
               </div>
             </label>
@@ -194,7 +194,7 @@ export default function Settings() {
                 https://github.com/onekb/cc-look
               </a>
             </p>
-            <p className="text-gray-400">MIT License © 2025 CC Look Team</p>
+            <p className="text-gray-400">MIT License © 2026 CC Look Team</p>
 
             {/* 检查更新 */}
             <div className="pt-3 mt-3 border-t border-gray-100">

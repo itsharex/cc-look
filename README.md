@@ -14,6 +14,26 @@
 
 ---
 
+## 📸 应用截图
+
+<div align="center">
+
+| 首页 | 调用日志 | 请求详情 |
+|:---:|:---:|:---:|
+| <img src="resources/首页.jpg" width="250"> | <img src="resources/调用日志.jpg" width="250"> | <img src="resources/请求详情.jpg" width="250"> |
+
+</div>
+
+---
+
+## 🎬 演示视频
+
+<video src="https://github.com/user-attachments/assets/cc-look.mp4" width="100%" controls></video>
+
+> 如果视频无法播放，请直接查看 [resources/cc-look.mp4](resources/cc-look.mp4)
+
+---
+
 ## 📖 简介
 
 CC Look 是一个本地 AI API 代理软件，帮助开发者更方便地调用、监控和调试各平台的 AI API。
@@ -40,7 +60,7 @@ CC Look 通过提供本地代理服务，让您可以：
 - 支持添加多个 AI 平台配置
 - 支持 OpenAI 协议和 Anthropic Claude 协议
 - 自定义 API Base URL（支持代理/中转服务）
-- 独立端口隔离不同平台
+- 统一代理端口，通过路径前缀区分不同平台
 
 ### 📡 本地代理服务
 - 一键启动/停止代理
@@ -49,10 +69,10 @@ CC Look 通过提供本地代理服务，让您可以：
 - 请求/响应自动记录
 
 ### 📊 实时监控
-- 每个平台独立的输出窗口
 - 实时显示流式响应内容
 - 连接状态指示器
-- 输出速度监控
+- 输出速度监控（Token/s）
+- 首 Token 时间统计
 
 ### 📝 日志系统
 - 完整的请求/响应记录
@@ -62,9 +82,11 @@ CC Look 通过提供本地代理服务，让您可以：
 
 ### ⚙️ 设置中心
 - 主题切换（浅色/深色/跟随系统）
-- 日志保留策略
-- 端口范围配置
+- 日志保留策略与存储大小查看
+- 清空日志功能
+- 代理端口配置
 - 开机自启动
+- 动态浮动窗口
 
 ---
 
@@ -103,20 +125,20 @@ npm run build:win   # Windows
 
 1. **添加平台**
    - 点击「添加平台」按钮
-   - 填写平台名称、协议类型、API URL 和 API Key
-   - 设置本地端口（如 3101）
+   - 填写平台名称、协议类型、API URL 和路径前缀
+   - 例如：智谱 AI，路径前缀 `/bigmodel`
 
 2. **启动代理**
-   - 在平台列表中点击「启动」按钮
-   - 代理服务将在 `http://localhost:{端口}` 启动
+   - 点击「启动服务」按钮
+   - 代理服务将在 `http://localhost:5005` 启动
 
 3. **配置应用**
    - 将您的应用或工具的 API Base URL 改为本地代理地址
-   - 例如：`http://localhost:3101/v1/chat/completions`
+   - 例如：`http://localhost:5005/bigmodel/v1/messages`
 
 4. **监控调用**
-   - 切换到「实时监控」页面查看流式输出
-   - 在「调用日志」页面查看历史记录
+   - 在「调用日志」页面查看实时请求和历史记录
+   - 支持复制 curl 命令、导出日志等功能
 
 ---
 
@@ -140,7 +162,6 @@ cc-look/
 │   │   ├── App.tsx
 │   │   ├── pages/           # 页面组件
 │   │   │   ├── Platforms.tsx
-│   │   │   ├── Monitor.tsx
 │   │   │   ├── Logs.tsx
 │   │   │   └── Settings.tsx
 │   │   ├── components/      # UI 组件
@@ -154,11 +175,12 @@ cc-look/
 │   │   └── index.ts
 │   │
 │   └── shared/              # 共享代码
-│       ├── types.ts         # 类型定义
-│       └── constants.ts     # 常量
+│       └── types.ts         # 类型定义
 │
 ├── resources/               # 资源文件
-│   └── icons/
+│   ├── icon.png            # 应用图标
+│   ├── logo.svg            # Logo
+│   └── *.jpg               # 截图
 │
 ├── package.json
 ├── electron.vite.config.ts

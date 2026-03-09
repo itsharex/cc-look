@@ -90,11 +90,11 @@ cc-look/
 
 ```typescript
 // 单端口多路径架构
-// 所有平台共用一个端口 (默认 3100)
+// 所有平台共用一个端口 (默认 5005)
 // 通过 pathPrefix 区分不同平台
 // 例如：
-// - http://localhost:3100/openai/v1/chat/completions
-// - http://localhost:3100/claude/v1/messages
+// - http://localhost:5005/openai
+// - http://localhost:5005/claude
 ```
 
 ### 2. 渲染进程 (Renderer Process)
@@ -263,7 +263,7 @@ UI 重渲染
 ## 代理请求流程
 
 ```
-客户端请求 → localhost:3100/openai/v1/chat/completions
+客户端请求 → localhost:5005/openai/v1/chat/completions
                     ↓
            ProxyManager (Express)
                     ↓

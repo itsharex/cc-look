@@ -50,7 +50,7 @@ CC Look 通过提供本地代理服务解决这些问题。
 
 1. 在平台列表中找到刚添加的平台
 2. 点击「启动」按钮
-3. 代理服务将在 `http://localhost:3100` 启动
+3. 代理服务将在 `http://localhost:5005` 启动
 
 ### 第三步：配置应用
 
@@ -59,13 +59,13 @@ CC Look 通过提供本地代理服务解决这些问题。
 **OpenAI 兼容客户端**
 ```
 原地址: https://api.openai.com/v1
-代理地址: http://localhost:3100/openai/v1
+代理地址: http://localhost:5005/openai/v1
 ```
 
 **Anthropic SDK**
 ```
 原地址: https://api.anthropic.com
-代理地址: http://localhost:3100/claude
+代理地址: http://localhost:5005/claude
 ```
 
 ### 第四步：监控调用
@@ -147,7 +147,7 @@ CC Look 通过提供本地代理服务解决这些问题。
 | 设置项 | 说明 | 默认值 |
 |--------|------|--------|
 | 主题 | 浅色/深色/跟随系统 | 跟随系统 |
-| 代理端口 | 本地代理服务端口 | 3100 |
+| 代理端口 | 本地代理服务端口 | 5005 |
 | 日志保留天数 | 自动清理超过天数的日志 | 7 天 |
 | 开机自启动 | 系统启动时自动运行 | 关闭 |
 | 最小化到托盘 | 关闭窗口时最小化到托盘 | 开启 |
@@ -179,7 +179,7 @@ CC Look 通过提供本地代理服务解决这些问题。
 ### 使用 curl 测试
 
 ```bash
-curl http://localhost:3100/openai/v1/chat/completions \
+curl http://localhost:5005/openai/v1/chat/completions \
   -H "Authorization: Bearer sk-xxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -193,13 +193,13 @@ curl http://localhost:3100/openai/v1/chat/completions \
 
 **OpenAI SDK**
 ```bash
-export OPENAI_API_BASE=http://localhost:3100/openai/v1
+export OPENAI_API_BASE=http://localhost:5005/openai/v1
 export OPENAI_API_KEY=sk-xxx
 ```
 
 **Anthropic SDK**
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:3100/claude
+export ANTHROPIC_BASE_URL=http://localhost:5005/claude
 export ANTHROPIC_API_KEY=sk-xxx
 ```
 
@@ -210,7 +210,7 @@ export ANTHROPIC_API_KEY=sk-xxx
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:3100/openai/v1",
+    base_url="http://localhost:5005/openai/v1",
     api_key="your-api-key"
 )
 

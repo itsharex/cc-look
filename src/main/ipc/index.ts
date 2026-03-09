@@ -119,6 +119,10 @@ export function setupIpcHandlers(): void {
     return db.exportLogs(format, platformId)
   })
 
+  ipcMain.handle(IPC_CHANNELS.LOG_SIZE, (): { count: number; sizeBytes: number } => {
+    return db.getLogSize()
+  })
+
   // ==================== 设置管理 ====================
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, (): AppSettings => {

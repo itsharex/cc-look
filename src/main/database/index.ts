@@ -198,6 +198,58 @@ export async function initDatabase(): Promise<void> {
     }
   }
 
+  // 首次使用时添加默认平台
+  const existingPlatforms = db.exec('SELECT COUNT(*) FROM platforms')
+  const platformCount = existingPlatforms.length > 0 ? (existingPlatforms[0].values[0][0] as number) : 0
+  if (platformCount === 0) {
+    console.log('[Database] 首次使用，添加默认平台...')
+    const now = Date.now()
+
+    // 智谱
+    db.run(
+        `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), '智谱', 'anthropic', 'https://open.bigmodel.cn/api/anthropic', '/bigmodel', 1, now, now]
+    )
+
+    // Z.ai
+    db.run(
+        `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), 'Z.ai', 'anthropic', 'https://api.z.ai/api/anthropic', '/z_ai', 1, now, now]
+    )
+
+    // MINIMAX-CN
+    db.run(
+        `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), 'MINIMAX-CN', 'anthropic', 'https://api.minimaxi.com/anthropic', '/minimaxi', 1, now, now]
+    )
+
+    // MINIMAX-Global
+    db.run(
+        `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), 'MINIMAX-Global', 'anthropic', 'https://api.minimax.io/anthropic', '/minimax', 1, now, now]
+    )
+
+    // Kimi
+    db.run(
+        `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), 'Kimi', 'anthropic', 'https://api.kimi.com/coding', '/kimi', 1, now, now]
+    )
+
+    // 阿里云百炼
+    db.run(
+        `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuidv4(), '阿里云百炼', 'anthropic', 'https://coding.dashscope.aliyuncs.com/apps/anthropic', '/dashscope', 1, now, now]
+    )
+
+    console.log('[Database] 默认平台已添加')
+  }
+
   saveDatabase()
   console.log('[Database] 初始化完成')
 }
@@ -416,8 +468,25 @@ export function clearLogs(platformId?: string): boolean {
   } else {
     db!.run('DELETE FROM request_logs')
   }
+  // 执行 VACUUM 压缩数据库，释放磁盘空间
+  db!.run('VACUUM')
   saveDatabase()
   return true
+}
+
+// 获取日志占用大小（预估）
+export function getLogSize(): { count: number; sizeBytes: number } {
+  const result = db!.exec('SELECT COUNT(*) FROM request_logs')
+  const count = result.length > 0 ? (result[0].values[0][0] as number) : 0
+
+  // 获取数据库文件大小
+  let sizeBytes = 0
+  if (fs.existsSync(dbPath)) {
+    const stats = fs.statSync(dbPath)
+    sizeBytes = stats.size
+  }
+
+  return { count, sizeBytes }
 }
 
 export function exportLogs(format: 'json' | 'csv', platformId?: string): string {

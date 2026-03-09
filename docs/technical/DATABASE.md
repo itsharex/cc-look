@@ -114,7 +114,7 @@ CREATE TABLE settings (
 {
   "theme": "system",
   "logRetentionDays": 7,
-  "proxyPort": 3100,
+  "proxyPort": 5005,
   "autoStart": false,
   "minimizeToTray": true,
   "floatingWindow": false

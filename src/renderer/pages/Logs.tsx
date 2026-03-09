@@ -10,7 +10,6 @@ export default function Logs() {
     loading,
     fetchPlatforms,
     fetchLogs,
-    clearLogs,
     exportLogs,
     subscribeToStream,
     proxyStatuses
@@ -47,12 +46,6 @@ export default function Logs() {
       }
     }
   }, [activeRequests, expandedActiveRequest])
-
-  const handleClearLogs = async () => {
-    if (confirm('确定要清空所有日志吗？')) {
-      await clearLogs()
-    }
-  }
 
   const handleExport = async (format: 'json' | 'csv') => {
     const content = await exportLogs(format)
@@ -336,8 +329,10 @@ export default function Logs() {
     }
 
     const copyCurl = (log: RequestLog) => {
-      const curl = generateCurl(log)
-      navigator.clipboard.writeText(curl)
+      if (confirm('⚠️ 警告：请求包含密钥信息，请勿泄露给他人！\n\n确定要复制吗？')) {
+        const curl = generateCurl(log)
+        navigator.clipboard.writeText(curl)
+      }
     }
 
     return (
@@ -525,12 +520,6 @@ export default function Logs() {
             className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
           >
             导出 JSON
-          </button>
-          <button
-            onClick={handleClearLogs}
-            className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200"
-          >
-            清空日志
           </button>
         </div>
       </div>

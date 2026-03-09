@@ -85,6 +85,7 @@ export const IPC_CHANNELS = {
   LOG_GET_BY_PLATFORM: 'log:getByPlatform',
   LOG_CLEAR: 'log:clear',
   LOG_EXPORT: 'log:export',
+  LOG_SIZE: 'log:size',
 
   // 设置
   SETTINGS_GET: 'settings:get',

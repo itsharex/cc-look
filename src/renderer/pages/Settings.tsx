@@ -9,10 +9,21 @@ export default function Settings() {
   const [message, setMessage] = useState('')
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
+  const [logSize, setLogSize] = useState<{ count: number; sizeBytes: number } | null>(null)
 
   useEffect(() => {
     fetchSettings()
+    fetchLogSize()
   }, [])
+
+  const fetchLogSize = async () => {
+    try {
+      const size = await window.api.log.getSize()
+      setLogSize(size)
+    } catch (error) {
+      console.error('Failed to fetch log size:', error)
+    }
+  }
 
   const fetchSettings = async () => {
     setLoading(true)
@@ -52,6 +63,27 @@ export default function Settings() {
     } finally {
       setCheckingUpdate(false)
     }
+  }
+
+  const handleClearLogs = async () => {
+    if (confirm('确定要清空所有日志吗？此操作不可恢复。')) {
+      try {
+        await window.api.log.clear()
+        setMessage('日志已清空')
+        fetchLogSize()
+        setTimeout(() => setMessage(''), 3000)
+      } catch (error) {
+        console.error('Failed to clear logs:', error)
+        setMessage('清空日志失败')
+      }
+    }
+  }
+
+  const formatSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
   }
 
   if (loading) {
@@ -113,19 +145,37 @@ export default function Settings() {
         {/* Logs */}
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <h3 className="font-medium text-gray-900 mb-3">日志设置</h3>
-          <div>
-            <label className="block text-sm text-gray-700 mb-2">日志保留天数</label>
-            <input
-              type="number"
-              value={settings.logRetentionDays}
-              onChange={(e) => setSettings({ ...settings, logRetentionDays: parseInt(e.target.value) })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              min={1}
-              max={365}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              超过此天数的日志将被自动清理
-            </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">日志保留天数</label>
+              <input
+                type="number"
+                value={settings.logRetentionDays}
+                onChange={(e) => setSettings({ ...settings, logRetentionDays: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                min={1}
+                max={365}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                超过此天数的日志将被自动清理
+              </p>
+            </div>
+            <div className="pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-700">日志存储</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {logSize ? `${logSize.count} 条记录，约 ${formatSize(logSize.sizeBytes)}` : '加载中...'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleClearLogs}
+                  className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
+                >
+                  清空日志
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

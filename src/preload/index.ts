@@ -35,7 +35,8 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.LOG_GET_BY_PLATFORM, platformId, limit, offset) as Promise<RequestLog[]>,
     clear: (platformId?: string) => ipcRenderer.invoke(IPC_CHANNELS.LOG_CLEAR, platformId) as Promise<boolean>,
     export: (format: 'json' | 'csv', platformId?: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.LOG_EXPORT, format, platformId) as Promise<string>
+      ipcRenderer.invoke(IPC_CHANNELS.LOG_EXPORT, format, platformId) as Promise<string>,
+    getSize: () => ipcRenderer.invoke(IPC_CHANNELS.LOG_SIZE) as Promise<{ count: number; sizeBytes: number }>
   },
 
   // 设置

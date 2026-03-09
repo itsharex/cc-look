@@ -79,6 +79,10 @@ export default function Platforms() {
     return protocol === 'openai' ? 'OpenAI' : 'Anthropic'
   }
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+  }
+
   const getDefaultPathPrefix = (protocol: ProtocolType) => {
     return protocol === 'openai' ? '/openai' : '/claude'
   }
@@ -142,22 +146,6 @@ export default function Platforms() {
           </button>
         </div>
 
-        {/* Running Status Details */}
-        {proxyState.isRunning && platforms.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-100">
-            <p className="text-sm text-gray-500 mb-2">可用路径：</p>
-            <div className="flex flex-wrap gap-2">
-              {platforms.map((platform) => (
-                <code
-                  key={platform.id}
-                  className="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700"
-                >
-                  http://localhost:{proxyState.port}{platform.pathPrefix}
-                </code>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Platform List */}
@@ -191,10 +179,24 @@ export default function Platforms() {
                       <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
                         {getProtocolLabel(platform.protocol)}
                       </span>
+                      {proxyState.isRunning && (
+                        <div className="flex items-center gap-1">
+                          <code className="px-2 py-0.5 text-xs bg-gray-100 rounded font-mono text-gray-700">
+                            http://localhost:{proxyState.port}{platform.pathPrefix}
+                          </code>
+                          <button
+                            onClick={() => copyToClipboard(`http://localhost:${proxyState.port}${platform.pathPrefix}`)}
+                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="复制路径"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
-                      <span className="font-mono text-primary-600">/{platform.pathPrefix.replace('/', '')}</span>
-                      <span className="mx-2">→</span>
                       <span className="font-mono">{platform.baseUrl}</span>
                     </div>
                   </div>

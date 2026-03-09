@@ -8,12 +8,12 @@ CC Look 的核心功能是本地代理服务，用于拦截、转发和监控 AI
 
 ### 单端口多路径架构
 
-所有平台共用一个代理端口（默认 3100），通过路径前缀区分不同平台：
+所有平台共用一个代理端口（默认 5005），通过路径前缀区分不同平台：
 
 ```
-http://localhost:3100/openai/v1/chat/completions  → OpenAI 平台
-http://localhost:3100/claude/v1/messages           → Anthropic 平台
-http://localhost:3100/custom/v1/chat/completions   → 自定义平台
+http://localhost:5005/openai  → OpenAI 平台
+http://localhost:5005/claude  → Anthropic 平台
+http://localhost:5005/custom  → 自定义平台
 ```
 
 ### ProxyManager 类
@@ -21,7 +21,7 @@ http://localhost:3100/custom/v1/chat/completions   → 自定义平台
 ```typescript
 class ProxyManager {
   private server: http.Server | null = null
-  private port: number = 3100
+  private port: number = 5005
   private platforms: Map<string, Platform> = new Map()
   private isRunning: boolean = false
 
@@ -314,7 +314,7 @@ proxyRes.on('error', (err) => {
 
 | 配置 | 默认值 | 说明 |
 |------|--------|------|
-| 端口 | 3100 | 可在设置中修改 |
+| 端口 | 5005 | 可在设置中修改 |
 | 请求超时 | 120s | 长时间流式请求 |
 | Keep-Alive | 65s | HTTP Keep-Alive |
 | 请求体限制 | 10MB | JSON 请求体大小 |
@@ -327,16 +327,16 @@ proxyRes.on('error', (err) => {
 
 ```bash
 # OpenAI 兼容客户端
-OPENAI_API_BASE=http://localhost:3100/openai/v1
+OPENAI_API_BASE=http://localhost:5005/openai
 
 # Anthropic SDK
-ANTHROPIC_BASE_URL=http://localhost:3100/claude
+ANTHROPIC_BASE_URL=http://localhost:5005/claude
 ```
 
 ### 发送请求
 
 ```bash
-curl http://localhost:3100/openai/v1/chat/completions \
+curl http://localhost:5005/openai/v1/chat/completions \
   -H "Authorization: Bearer your-api-key" \
   -H "Content-Type: application/json" \
   -d '{

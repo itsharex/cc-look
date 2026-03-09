@@ -125,7 +125,7 @@ export type ProtocolType = 'openai' | 'anthropic' | 'your-new-protocol'
 
 ```bash
 # 查找占用端口的进程
-lsof -i :3100
+lsof -i :5005
 
 # 终止进程
 kill -9 <PID>

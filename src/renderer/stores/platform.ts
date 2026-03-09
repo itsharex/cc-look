@@ -70,7 +70,7 @@ export const useLogStore = create<LogState>((set, get) => ({
     try {
       const settings = await window.api.settings.get()
       const state = await window.api.proxy.getGlobalState()
-      set({ proxyState: { isRunning: state.isRunning, port: settings.proxyPort || 3100 } })
+      set({ proxyState: { isRunning: state.isRunning, port: settings.proxyPort || 5005 } })
     } catch (error) {
       console.error('Failed to fetch proxy state:', error)
     }

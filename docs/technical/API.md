@@ -169,7 +169,7 @@ const success = await window.api.invoke('proxy:stop')
 
 ```typescript
 const status = await window.api.invoke('proxy:status')
-// { isRunning: true, port: 3100 }
+// { isRunning: true, port: 5005 }
 ```
 
 ### proxy:stream (事件)

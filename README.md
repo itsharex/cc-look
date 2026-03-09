@@ -300,6 +300,11 @@ sudo xattr -dr com.apple.quarantine /Applications/CC\ Look.app
 
 <div align="center">
 
+### ⭐ 如果这个项目对你有帮助，请给一个 Star 支持一下！⭐
+
+[![Star History Chart](https://api.star-history.com/svg?repos=onekb/cc-look&type=Date)](https://www.star-history.com/#onekb/cc-look&Date)
+
+
 **[⬆ 返回顶部](#cc-look)**
 
 Made with ❤️ by CC Look Team

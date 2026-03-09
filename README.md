@@ -249,6 +249,18 @@ npm run build:win
 
 ---
 
+## ❓ 常见问题
+
+### macOS 提示"CC Look.app"已损坏，无法打开
+
+这是 macOS 的安全机制导致的，执行以下命令即可解决：
+
+```bash
+sudo xattr -dr com.apple.quarantine /Applications/CC\ Look.app
+```
+
+---
+
 ## 🤝 贡献指南
 
 欢迎贡献代码、报告问题或提出建议！

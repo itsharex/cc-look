@@ -81,7 +81,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Footer */}
       <div className="p-4 border-t border-gray-800">
         <div className="text-xs text-gray-500">
-          v1.0.0
+          v1.1.0
         </div>
       </div>
     </div>

@@ -28,7 +28,7 @@
 
 ## 🎬 演示视频
 
-<video src="https://github.com/user-attachments/assets/cc-look.mp4" width="100%" controls></video>
+[视频演示](ttps://raw.githubusercontent.com/onekb/cc-look/refs/heads/main/resources/cc-look.mp4)
 
 > 如果视频无法播放，请直接查看 [resources/cc-look.mp4](resources/cc-look.mp4)
 

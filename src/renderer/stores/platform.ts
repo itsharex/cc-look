@@ -62,7 +62,7 @@ export const useLogStore = create<LogState>((set, get) => ({
   logs: [],
   activeRequests: [],
   loading: false,
-  proxyState: { isRunning: false, port: 3100 },
+  proxyState: { isRunning: false, port: 5005 },
 
   // ==================== 代理服务（统一） ====================
 

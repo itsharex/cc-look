@@ -12,7 +12,7 @@ import { floatingWindowManager } from '../floatingWindow'
 
 export class ProxyManager {
   private server: http.Server | null = null
-  private port: number = 3100
+  private port: number = 5005
   private platforms: Map<string, Platform> = new Map()
   private isRunning: boolean = false
 

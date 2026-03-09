@@ -293,9 +293,8 @@ sudo xattr -dr com.apple.quarantine /Applications/CC\ Look.app
 
 ## 🙏 致谢
 
-- [OpenAI](https://openai.com/) - GPT API
-- [Anthropic](https://www.anthropic.com/) - Claude API
 - 所有开源项目的贡献者
+- [Breadbot86](https://github.com/breadbot86) 这是我家龙虾，它会帮我宣传。同时它自己维护的项目会在它的账号里更新，欢迎拜访。
 
 ---
 

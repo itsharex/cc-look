@@ -46,6 +46,7 @@ interface LogState {
   addActiveRequest: (event: StreamEvent, platformName: string) => void
   updateActiveRequest: (event: StreamEvent) => void
   removeActiveRequest: (requestId: string) => void
+  abortRequest: (requestId: string) => Promise<boolean>
 
   // 流事件订阅
   subscribeToStream: () => () => void
@@ -236,6 +237,22 @@ export const useLogStore = create<LogState>((set, get) => ({
     set((state) => ({
       activeRequests: state.activeRequests.filter((r) => r.requestId !== requestId)
     }))
+  },
+
+  abortRequest: async (requestId) => {
+    try {
+      const result = await window.api.proxy.abortRequest(requestId)
+      if (result) {
+        // 立即移除活动请求
+        set((state) => ({
+          activeRequests: state.activeRequests.filter((r) => r.requestId !== requestId)
+        }))
+      }
+      return result
+    } catch (error) {
+      console.error('Failed to abort request:', error)
+      return false
+    }
   },
 
   // ==================== 流事件订阅 ====================

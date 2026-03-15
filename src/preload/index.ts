@@ -20,6 +20,7 @@ const api = {
     startGlobal: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_START) as Promise<boolean>,
     stopGlobal: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STOP) as Promise<boolean>,
     getGlobalState: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STATUS) as Promise<{ isRunning: boolean; port: number }>,
+    abortRequest: (requestId: string) => ipcRenderer.invoke(IPC_CHANNELS.PROXY_ABORT, requestId) as Promise<boolean>,
     onStream: (callback: (event: StreamEvent) => void) => {
       const handler = (_: unknown, data: StreamEvent) => callback(data)
       ipcRenderer.on(IPC_CHANNELS.PROXY_STREAM, handler)

@@ -10,11 +10,21 @@ import * as db from '../database'
 import { sendStreamEvent } from '../ipc'
 import { floatingWindowManager } from '../floatingWindow'
 
+// 活跃请求信息
+interface ActiveConnection {
+  clientRes: Response        // 客户端响应对象
+  proxyReq: http.ClientRequest // 代理请求对象
+  platform: Platform
+  mainWindow: BrowserWindow | null
+  requestId: string
+}
+
 export class ProxyManager {
   private server: http.Server | null = null
   private port: number = 5005
   private platforms: Map<string, Platform> = new Map()
   private isRunning: boolean = false
+  private activeConnections: Map<string, ActiveConnection> = new Map()
 
   // 检查端口是否可用
   private isPortAvailable(port: number): Promise<boolean> {
@@ -189,6 +199,38 @@ export class ProxyManager {
     }
   }
 
+  // 中止指定请求
+  abortRequest(requestId: string): boolean {
+    const connection = this.activeConnections.get(requestId)
+    if (!connection) {
+      console.log(`[Proxy] 未找到活跃请求: ${requestId}`)
+      return false
+    }
+
+    console.log(`[Proxy] 中止请求: ${requestId}`)
+
+    // 销毁代理请求
+    connection.proxyReq.destroy(new Error('Request aborted by user'))
+
+    // 发送错误事件
+    sendStreamEvent(connection.mainWindow, {
+      platformId: connection.platform.id,
+      requestId,
+      type: 'error',
+      content: 'Connection closed by user',
+      timestamp: Date.now()
+    })
+
+    // 关闭浮动窗口
+    floatingWindowManager.sendContent(requestId, '', 'end')
+    floatingWindowManager.scheduleClose(requestId, 1000)
+
+    // 移除连接记录
+    this.activeConnections.delete(requestId)
+
+    return true
+  }
+
   private async handleRequest(
     platform: Platform,
     req: Request,
@@ -356,6 +398,22 @@ export class ProxyManager {
       headers['Content-Length'] = Buffer.byteLength(bodyString).toString()
       proxyReq.write(bodyString)
     }
+
+    // 注册活跃连接
+    this.activeConnections.set(requestId, {
+      clientRes: res,
+      proxyReq,
+      platform,
+      mainWindow,
+      requestId
+    })
+
+    // 请求结束时移除连接记录
+    const cleanup = () => {
+      this.activeConnections.delete(requestId)
+    }
+    proxyReq.on('close', cleanup)
+
     proxyReq.end()
   }
 

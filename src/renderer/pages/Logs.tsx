@@ -12,7 +12,8 @@ export default function Logs() {
     fetchLogs,
     exportLogs,
     subscribeToStream,
-    proxyStatuses
+    proxyStatuses,
+    abortRequest
   } = useLogStore()
 
   const [selectedLog, setSelectedLog] = useState<RequestLog | ActiveRequest | null>(null)
@@ -112,6 +113,13 @@ export default function Logs() {
     const isExpanded = expandedActiveRequest === request.requestId
     const duration = Date.now() - request.startTime
 
+    const handleAbort = async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (confirm('确定要关闭此连接吗？')) {
+        await abortRequest(request.requestId)
+      }
+    }
+
     return (
       <div
         key={request.requestId}
@@ -144,6 +152,14 @@ export default function Logs() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* 关闭连接按钮 */}
+            <button
+              onClick={handleAbort}
+              className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+              title="关闭连接"
+            >
+              关闭
+            </button>
             <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded">
               {request.rawContent.length} chunks
             </span>

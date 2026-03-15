@@ -97,6 +97,12 @@ export function setupIpcHandlers(): void {
     }
   })
 
+  // 中止指定请求
+  ipcMain.handle(IPC_CHANNELS.PROXY_ABORT, (_, requestId: string): boolean => {
+    console.log(`[IPC] 中止请求: ${requestId}`)
+    return proxyManager.abortRequest(requestId)
+  })
+
   // ==================== 日志管理 ====================
 
   ipcMain.handle(IPC_CHANNELS.LOG_GET_ALL, (_, limit?: number, offset?: number): RequestLog[] => {

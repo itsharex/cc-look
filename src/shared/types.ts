@@ -79,6 +79,7 @@ export const IPC_CHANNELS = {
   PROXY_STOP: 'proxy:stop',
   PROXY_STATUS: 'proxy:status',
   PROXY_STREAM: 'proxy:stream',
+  PROXY_ABORT: 'proxy:abort',
 
   // 日志
   LOG_GET_ALL: 'log:getAll',

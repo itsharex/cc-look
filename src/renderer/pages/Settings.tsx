@@ -276,7 +276,7 @@ export default function Settings() {
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <h3 className="font-medium text-gray-900 mb-3">关于</h3>
           <div className="text-sm text-gray-600 space-y-2">
-            <p className="font-medium">CC Look v1.1.0</p>
+            <p className="font-medium">CC Look v1.1.3</p>
             <p>本地 AI API 代理软件 - 开源免费</p>
             <p>
               <a

@@ -25,10 +25,15 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Clean and install dependencies
+        shell: bash
         run: |
           rm -rf node_modules package-lock.json
           npm install
+
+      - name: Rebuild native modules (macOS)
+        if: matrix.os == 'macos-latest'
+        run: npm run postinstall
 
       - name: Build Electron app (macOS)
         if: matrix.os == 'macos-latest'

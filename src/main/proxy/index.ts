@@ -441,7 +441,7 @@ export class ProxyManager {
     let aggregatedThinking = ''  // 思考内容
     let aggregatedToolCalls: any[] = []  // 工具调用
     let aggregatedUsage: any = null
-    let aggregatedCacheReadInputTokens: number | null = null
+
     let aggregatedModel: string | null = null
     let aggregatedId: string | null = null
     let aggregatedRole: string | null = null
@@ -466,11 +466,20 @@ export class ProxyManager {
     }
 
     // 解析 SSE 数据并提取内容
-    const parseSseEvent = (data: string): void => {
+    // 支持两种格式：
+    // 1. 单行格式: data: {"type":"content_block_delta",...}
+    // 2. 多行格式: event: content_block_delta\ndata: {"delta":{...}}
+    const parseSseEvent = (eventType: string | null, data: string): void => {
       if (data === '[DONE]') return
 
       try {
         const parsed = JSON.parse(data)
+
+        // 如果提供了 eventType，将其合并到 parsed 对象中
+        // 这样无论服务端使用单行还是多行格式都能正确处理
+        if (eventType && !parsed.type) {
+          parsed.type = eventType
+        }
 
         // 记录首次 token 时间
         if (firstTokenTime === null && hasContent(parsed)) {
@@ -524,22 +533,27 @@ export class ProxyManager {
           }
         }
 
-        // Anthropic 格式
-        if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+        // Anthropic 格式 - 多行SSE格式 (event: content_block_delta + data: {...})
+        // 处理文本内容
+        if ((parsed.type === 'content_block_delta' || eventType === 'content_block_delta') && parsed.delta?.text) {
           aggregatedContent += parsed.delta.text
           outputTokenCount++
           // 浮动窗口
           floatingWindowManager.sendContent(requestId, parsed.delta.text, 'content')
         }
-        // Anthropic thinking 格式
-        if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'thinking_delta' && parsed.delta?.thinking) {
-          aggregatedThinking += parsed.delta.thinking
-          outputTokenCount++
-          // 浮动窗口
-          floatingWindowManager.sendContent(requestId, parsed.delta.thinking, 'thinking')
+        // Anthropic thinking 格式 - 多行SSE格式
+        if ((parsed.type === 'content_block_delta' || eventType === 'content_block_delta') &&
+            (parsed.delta?.type === 'thinking_delta' || parsed.delta?.thinking)) {
+          const thinking = parsed.delta.thinking || parsed.delta.thinking_delta
+          if (thinking) {
+            aggregatedThinking += thinking
+            outputTokenCount++
+            // 浮动窗口
+            floatingWindowManager.sendContent(requestId, thinking, 'thinking')
+          }
         }
         // Anthropic 工具调用格式 - 开始 (支持 tool_use 和 server_tool_use)
-        if (parsed.type === 'content_block_start' &&
+        if ((parsed.type === 'content_block_start' || eventType === 'content_block_start') &&
             (parsed.content_block?.type === 'tool_use' || parsed.content_block?.type === 'server_tool_use')) {
           const index = parsed.index ?? aggregatedToolCalls.length
           aggregatedToolCalls[index] = {
@@ -555,29 +569,35 @@ export class ProxyManager {
           }), parsed.content_block.type as 'tool_use' | 'server_tool_use')
         }
         // Anthropic 工具调用格式 - 增量
-        if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'input_json_delta') {
+        if ((parsed.type === 'content_block_delta' || eventType === 'content_block_delta') &&
+            parsed.delta?.type === 'input_json_delta') {
           const index = parsed.index ?? 0
           if (aggregatedToolCalls[index]) {
             aggregatedToolCalls[index].input += parsed.delta.partial_json || ''
             outputTokenCount++
           }
         }
-        if (parsed.type === 'message_start' && parsed.message) {
-          if (parsed.message.id) aggregatedId = parsed.message.id
-          if (parsed.message.model) aggregatedModel = parsed.message.model
-          if (parsed.message.role) aggregatedRole = parsed.message.role
-          if (parsed.message.usage) {
+        // Anthropic message_start - 多行SSE格式
+        if (parsed.type === 'message_start' || eventType === 'message_start') {
+          const message = parsed.message || parsed
+          if (message.id) aggregatedId = message.id
+          if (message.model) aggregatedModel = message.model
+          if (message.role) aggregatedRole = message.role
+          if (message.usage) {
             aggregatedUsage = {
-              input_tokens: parsed.message.usage.input_tokens,
-              cache_read_input_tokens: parsed.message.usage.cache_read_input_tokens,
-              cache_creation_input_tokens: parsed.message.usage.cache_creation_input_tokens
+              input_tokens: message.usage.input_tokens,
+              cache_read_input_tokens: message.usage.cache_read_input_tokens,
+              cache_creation_input_tokens: message.usage.cache_creation_input_tokens
             }
           }
         }
-        if (parsed.type === 'message_delta' && parsed.usage) {
-          aggregatedUsage = {
-            ...aggregatedUsage,
-            output_tokens: parsed.usage.output_tokens
+        // Anthropic message_delta - 多行SSE格式
+        if (parsed.type === 'message_delta' || eventType === 'message_delta') {
+          if (parsed.usage) {
+            aggregatedUsage = {
+              ...aggregatedUsage,
+              output_tokens: parsed.usage.output_tokens
+            }
           }
           if (parsed.delta?.stop_reason) {
             aggregatedFinishReason = parsed.delta.stop_reason
@@ -605,13 +625,22 @@ export class ProxyManager {
       sseBuffer += data
 
       // 解析 SSE 行
+      // 支持两种格式：
+      // 1. 单行格式: data: {"type":"content_block_delta",...}
+      // 2. 多行格式: event: content_block_delta\ndata: {"delta":{...}}
       const lines = sseBuffer.split('\n')
       sseBuffer = lines.pop() || ''
 
+      let currentEventType: string | null = null
+
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const content = line.slice(6).trim()
-          parseSseEvent(content)
+        if (line.startsWith('event:')) {
+          // 记录事件类型
+          currentEventType = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          // 处理数据行，传入之前记录的事件类型
+          const content = line.slice(5).trim()
+          parseSseEvent(currentEventType, content)
 
           sendStreamEvent(mainWindow, {
             platformId: platform.id,
@@ -620,7 +649,11 @@ export class ProxyManager {
             content,
             timestamp: Date.now()
           })
+
+          // 重置事件类型
+          currentEventType = null
         } else if (line.trim() && !line.startsWith(':')) {
+          // 其他非注释行，可能是原始数据
           sendStreamEvent(mainWindow, {
             platformId: platform.id,
             requestId,

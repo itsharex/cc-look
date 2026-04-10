@@ -139,14 +139,25 @@ npm run build:win   # Windows
    - 修改 `~/.openclaw/agents/main/agent/models.json` 中的 `baseUrl` 配置
    - 将 baseUrl 改为 `http://localhost:5005/{路径前缀}`
 
-   **Claude Code 用户：**
+   **Claude Code / CC Switch 用户：**
    - 配合 [CC Switch](https://github.com/farion1231/cc-switch) 使用，30秒完成配置！
    - 操作视频：
 
 https://github.com/user-attachments/assets/a2238663-77bc-4b5b-8263-1a91d7610378
 
+   **CC Look HTTP Proxy（通用 HTTP/HTTPS 代理）**
+   
+   如果你不想逐个修改各平台的 `baseUrl`，可以直接将 CC Look 作为 **HTTP 代理**使用：
+   
+   - 在 CC Look 中启动代理服务（默认端口 `5005`）
+   - 在你的客户端工具（如 CC Switch、自定义脚本、IDE 插件等）中配置 **HTTP Proxy** 为 `http://localhost:5005`
+   - **无需修改原本的任何 API 请求地址**，CC Look 会自动拦截并代理所有经过的流量
+   - 同时支持 **CONNECT 隧道**，可代理 HTTPS 请求（CC Look 会使用内置的 MITM CA 证书自动解密并记录请求内容）
+   
+   这种方式适合需要代理大量已有配置、统一通过 CC Look 做监控和调试的场景。
+
   **其他工具 用户：**
-  - 酌情修改 `baseUrl`
+  - 酌情修改 `baseUrl`，或配置 HTTP Proxy 为 `http://localhost:5005`
 
 
 4. **监控调用**

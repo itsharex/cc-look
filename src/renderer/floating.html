@@ -302,11 +302,14 @@
         } catch {
           contentEl.innerHTML = `<div class="tool-detail-card"><pre class="tool-input">${escapeHtml(content)}</pre></div>`
         }
-        // 工具详情超出时自动滚动到最底部
-        const toolInputEl = contentEl.querySelector('.tool-input')
-        if (toolInputEl) {
-          toolInputEl.scrollTop = toolInputEl.scrollHeight
-        }
+        // 工具详情超出时自动滚动到最底部（延迟到下一帧确保 DOM 已渲染）
+        requestAnimationFrame(() => {
+          const toolInputEl = contentEl.querySelector('.tool-input')
+          if (toolInputEl) {
+            toolInputEl.scrollTop = toolInputEl.scrollHeight
+          }
+          contentEl.scrollTop = contentEl.scrollHeight
+        })
       } else {
         const span = document.createElement('span')
         span.textContent = content

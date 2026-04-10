@@ -3,9 +3,7 @@ import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type St
 import * as db from '../database'
 import { ProxyManager } from '../proxy'
 import { floatingWindowManager } from '../floatingWindow'
-import * as http from 'http'
 import * as https from 'https'
-import * as tls from 'tls'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { platform } from 'os'
@@ -73,7 +71,7 @@ const proxyManager = new ProxyManager()
 let mainWindow: BrowserWindow | null = null
 
 // 当前版本
-const CURRENT_VERSION = '1.3.5'
+const CURRENT_VERSION = '1.3.7'
 
 export function setupIpcHandlers(): void {
   mainWindow = BrowserWindow.getAllWindows()[0]
@@ -195,78 +193,21 @@ export function setupIpcHandlers(): void {
   // 测试 MITM 代理是否正常工作
   ipcMain.handle(IPC_CHANNELS.PROXY_TEST_MITM, async (): Promise<{ success: boolean; status?: number; message: string }> => {
     console.log('[IPC] 测试 MITM 代理')
-    const proxyPort = proxyManager.getPort()
-    const caPem = getCaCertPem()
-    const targetHost = 'www.baidu.com'
 
-    const mitmTest = (): Promise<{ success: boolean; status?: number; message: string }> => {
-      return new Promise((resolve) => {
-        const proxyReq = http.request({
-          host: '127.0.0.1',
-          port: proxyPort,
-          method: 'CONNECT',
-          path: `${targetHost}:443`
-        })
-
-        proxyReq.on('connect', (res, socket) => {
-          if (res.statusCode !== 200) {
-            resolve({ success: false, message: `CONNECT 失败，状态码 ${res.statusCode}` })
-            return
-          }
-
-          const request = https.get({
-            host: targetHost,
-            socket,
-            path: '/',
-            agent: false,
-            ca: caPem,
-            rejectUnauthorized: true
-          }, (httpsRes) => {
-            const status = httpsRes.statusCode || 0
-            httpsRes.resume()
-            if (status >= 200 && status < 400) {
-              resolve({ success: true, status, message: 'MITM 链路正常' })
-            } else {
-              resolve({ success: false, status, message: `代理返回异常状态码 ${status}` })
-            }
-          })
-
-          request.on('error', (err) => {
-            resolve({ success: false, message: err.message })
-          })
-        })
-
-        proxyReq.on('error', () => {
-          resolve({ success: false, message: `无法连接到代理服务（127.0.0.1:${proxyPort}），请确认代理已启动` })
-        })
-
-        proxyReq.end()
-      })
-    }
-
-    // 第一步：注入 CA 验证 MITM 链路本身是否正常
-    const linkResult = await mitmTest()
-    if (!linkResult.success) {
-      return { success: false, status: linkResult.status, message: `❌ ${linkResult.message}` }
-    }
-
-    // 第二步：检测系统是否信任了 CC Look CA 证书
     const trustStatus = await getSystemCaStatus()
     if (trustStatus === 'trusted') {
-      return { success: true, status: linkResult.status, message: `✅ 代理测试成功，HTTP 状态码 ${linkResult.status}，系统已信任 CC Look CA 证书` }
+      return { success: true, message: '✅ 系统已信任 CC Look CA 证书' }
     }
 
     if (trustStatus === 'installed_untrusted') {
       return {
-        success: true,
-        status: linkResult.status,
-        message: '⚠️ MITM 链路正常，但系统尚未信任 CC Look CA 证书。实际客户端可能会报证书错误，请按照说明安装并信任证书。'
+        success: false,
+        message: '⚠️ CC Look CA 证书已安装，但系统尚未信任。实际客户端可能会报证书错误，请按照说明信任证书。'
       }
     }
 
     return {
       success: false,
-      status: linkResult.status,
       message: '❌ 未检测到 CC Look CA 证书，请先下载并安装证书。'
     }
   })

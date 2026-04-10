@@ -209,24 +209,24 @@ export class ProxyManager {
 
     console.log(`[Proxy] 中止请求: ${requestId}`)
 
-    // 销毁代理请求
-    connection.proxyReq.destroy(new Error('Request aborted by user'))
+    // 先移除连接记录，防止后续事件重新处理
+    this.activeConnections.delete(requestId)
 
-    // 发送错误事件
-    sendStreamEvent(connection.mainWindow, {
-      platformId: connection.platform.id,
-      requestId,
-      type: 'error',
-      content: 'Connection closed by user',
-      timestamp: Date.now()
-    })
+    // 关闭客户端响应，中断 SSE 连接
+    try {
+      if (!connection.clientRes.writableEnded && !connection.clientRes.destroyed) {
+        connection.clientRes.end()
+      }
+    } catch (e) {
+      // 忽略已关闭的响应
+    }
+
+    // 销毁代理请求（中断上游连接）
+    connection.proxyReq.destroy(new Error('Request aborted by user'))
 
     // 关闭浮动窗口
     floatingWindowManager.sendContent(requestId, '', 'end')
     floatingWindowManager.scheduleClose(requestId, 1000)
-
-    // 移除连接记录
-    this.activeConnections.delete(requestId)
 
     return true
   }

@@ -196,23 +196,8 @@ export const useLogStore = create<LogState>((set, get) => ({
       )
 
       if (requestIndex === -1) {
-        // 如果找不到，可能是新请求，添加它
-        const platformName = getPlatformName(state.platforms, event.platformId)
-        return {
-          activeRequests: [
-            {
-              requestId: event.requestId,
-              platformId: event.platformId,
-              platformName,
-              method: 'POST',
-              path: '/v1/messages',
-              startTime: event.timestamp,
-              rawContent: event.content ? [event.content] : [],
-              status: event.type === 'error' ? 'error' : 'streaming'
-            },
-            ...state.activeRequests
-          ]
-        }
+        // 请求不在活跃列表中（可能已被用户中止或已结束），忽略此事件
+        return state
       }
 
       const updatedRequests = [...state.activeRequests]

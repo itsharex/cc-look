@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import iconUrl from '../../../resources/icon.png'
 
 interface SidebarProps {
   currentPage: string
@@ -48,11 +49,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Logo */}
       <div className="h-14 flex items-center px-4 border-b border-gray-800">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
+          <img src={iconUrl} alt="CC Look" className="w-8 h-8 rounded-lg" />
           <span className="font-semibold text-lg">CC Look</span>
         </div>
       </div>
@@ -81,7 +78,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Footer */}
       <div className="p-4 border-t border-gray-800">
         <div className="text-xs text-gray-500">
-          v1.1.5
+          v1.1.7
         </div>
       </div>
     </div>

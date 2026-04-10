@@ -28,34 +28,15 @@
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
       transition: opacity 0.5s ease-out;
+      cursor: grab;
+    }
+
+    .container.dragging {
+      cursor: grabbing;
     }
 
     .container.fading {
       opacity: 0;
-    }
-
-    .drag-handle {
-      height: 24px;
-      background: rgba(40, 40, 40, 0.6);
-      border-radius: 12px 12px 0 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: grab;
-      flex-shrink: 0;
-      -webkit-app-region: drag;
-    }
-
-    .drag-handle.dragging {
-      cursor: grabbing;
-    }
-
-    .drag-handle .grip {
-      width: 24px;
-      height: 3px;
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 2px;
     }
 
     .content {
@@ -67,6 +48,7 @@
       color: rgba(255, 255, 255, 0.9);
       word-wrap: break-word;
       white-space: pre-wrap;
+      cursor: auto;
     }
 
     .content::-webkit-scrollbar {
@@ -155,6 +137,23 @@
       flex: 1;
     }
 
+    .tool-input::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .tool-input::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .tool-input::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+    }
+
+    .tool-input::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
     .token-bar {
       display: flex;
       align-items: center;
@@ -180,9 +179,6 @@
 </head>
 <body>
   <div class="container" id="container">
-    <div class="drag-handle" id="drag-handle">
-      <div class="grip"></div>
-    </div>
     <div class="content" id="content"></div>
     <div class="token-bar" id="token-bar">
       <span>in: <span class="token-number" id="token-in">-</span></span>
@@ -193,7 +189,6 @@
   <script>
     const contentEl = document.getElementById('content')
     const containerEl = document.getElementById('container')
-    const dragHandleEl = document.getElementById('drag-handle')
     const tokenInEl = document.getElementById('token-in')
     const tokenOutEl = document.getElementById('token-out')
 
@@ -202,12 +197,12 @@
     let startX = 0
     let startY = 0
 
-    // 鼠标按下（仅在拖拽手柄上）
-    dragHandleEl.addEventListener('mousedown', (e) => {
+    // 鼠标按下：任意位置均可拖动（滚轮滚动不受影响）
+    document.addEventListener('mousedown', (e) => {
       isDragging = true
       startX = e.screenX
       startY = e.screenY
-      dragHandleEl.classList.add('dragging')
+      containerEl.classList.add('dragging')
       window.floatingApi.dragStart()
     })
 
@@ -223,7 +218,7 @@
     document.addEventListener('mouseup', (e) => {
       if (!isDragging) return
       isDragging = false
-      dragHandleEl.classList.remove('dragging')
+      containerEl.classList.remove('dragging')
       const dx = e.screenX - startX
       const dy = e.screenY - startY
       window.floatingApi.dragEnd(dx, dy)

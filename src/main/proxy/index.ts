@@ -322,6 +322,7 @@ export class ProxyManager {
           console.log(`[Proxy] 创建浮动窗口: ${requestId}`)
           floatingWindowManager.createWindow(requestId)
           floatingWindowManager.sendContent(requestId, '', 'start')
+          floatingWindowManager.sendTokens(requestId, null, 0)
         }
         this.handleStreamResponse(platform, req, res, proxyRes, mainWindow, requestId, responseHeaders, duration, headers, actualPath)
       } else {
@@ -435,6 +436,11 @@ export class ProxyManager {
     const requestStartTime = (req as any).startTime || Date.now()
     let firstTokenTime: number | null = null
     let outputTokenCount = 0
+    let displayInputTokens: number | null = null
+
+    const sendFloatingTokens = () => {
+      floatingWindowManager.sendTokens(requestId, displayInputTokens, outputTokenCount)
+    }
 
     // 汇总流式输出的内容
     let aggregatedContent = ''
@@ -490,6 +496,7 @@ export class ProxyManager {
         if (parsed.choices?.[0]?.delta?.content) {
           aggregatedContent += parsed.choices[0].delta.content
           outputTokenCount++
+          sendFloatingTokens()
           // 浮动窗口
           floatingWindowManager.sendContent(requestId, parsed.choices[0].delta.content, 'content')
         }
@@ -503,6 +510,10 @@ export class ProxyManager {
         }
         if (parsed.usage) {
           aggregatedUsage = parsed.usage
+          if (aggregatedUsage.prompt_tokens != null || aggregatedUsage.input_tokens != null) {
+            displayInputTokens = aggregatedUsage.prompt_tokens ?? aggregatedUsage.input_tokens
+            sendFloatingTokens()
+          }
         }
 
         // OpenAI 工具调用格式
@@ -525,11 +536,23 @@ export class ProxyManager {
                 name: toolCall.function.name,
                 input: {}
               }), 'tool_use')
+              // 右侧工具详情浮窗
+              floatingWindowManager.createToolWindow(requestId)
+              floatingWindowManager.sendToolContent(requestId, JSON.stringify({
+                name: toolCall.function.name,
+                input: '{}'
+              }))
             }
             if (toolCall.function?.arguments) {
               aggregatedToolCalls[index].function.arguments += toolCall.function.arguments
+              // 右侧工具详情浮窗 - 实时更新参数
+              floatingWindowManager.sendToolContent(requestId, JSON.stringify({
+                name: aggregatedToolCalls[index].function.name,
+                input: aggregatedToolCalls[index].function.arguments
+              }))
             }
             outputTokenCount++
+            sendFloatingTokens()
           }
         }
 
@@ -538,6 +561,7 @@ export class ProxyManager {
         if ((parsed.type === 'content_block_delta' || eventType === 'content_block_delta') && parsed.delta?.text) {
           aggregatedContent += parsed.delta.text
           outputTokenCount++
+          sendFloatingTokens()
           // 浮动窗口
           floatingWindowManager.sendContent(requestId, parsed.delta.text, 'content')
         }
@@ -548,6 +572,7 @@ export class ProxyManager {
           if (thinking) {
             aggregatedThinking += thinking
             outputTokenCount++
+            sendFloatingTokens()
             // 浮动窗口
             floatingWindowManager.sendContent(requestId, thinking, 'thinking')
           }
@@ -567,6 +592,12 @@ export class ProxyManager {
             name: parsed.content_block.name,
             input: {}
           }), parsed.content_block.type as 'tool_use' | 'server_tool_use')
+          // 右侧工具详情浮窗
+          floatingWindowManager.createToolWindow(requestId)
+          floatingWindowManager.sendToolContent(requestId, JSON.stringify({
+            name: parsed.content_block.name,
+            input: '{}'
+          }))
         }
         // Anthropic 工具调用格式 - 增量
         if ((parsed.type === 'content_block_delta' || eventType === 'content_block_delta') &&
@@ -575,6 +606,12 @@ export class ProxyManager {
           if (aggregatedToolCalls[index]) {
             aggregatedToolCalls[index].input += parsed.delta.partial_json || ''
             outputTokenCount++
+            sendFloatingTokens()
+            // 右侧工具详情浮窗 - 实时更新参数
+            floatingWindowManager.sendToolContent(requestId, JSON.stringify({
+              name: aggregatedToolCalls[index].name,
+              input: aggregatedToolCalls[index].input
+            }))
           }
         }
         // Anthropic message_start - 多行SSE格式
@@ -588,6 +625,10 @@ export class ProxyManager {
               input_tokens: message.usage.input_tokens,
               cache_read_input_tokens: message.usage.cache_read_input_tokens,
               cache_creation_input_tokens: message.usage.cache_creation_input_tokens
+            }
+            if (message.usage.input_tokens != null) {
+              displayInputTokens = message.usage.input_tokens
+              sendFloatingTokens()
             }
           }
         }

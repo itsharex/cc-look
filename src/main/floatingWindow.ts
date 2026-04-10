@@ -9,6 +9,11 @@ interface FloatingWindowInfo {
   orderIndex: number
 }
 
+interface ToolFloatingWindowInfo {
+  window: BrowserWindow
+  timeoutId: NodeJS.Timeout | null
+}
+
 interface FloatingWindowPosition {
   x: number
   y: number
@@ -16,6 +21,7 @@ interface FloatingWindowPosition {
 
 class FloatingWindowManager {
   private windows: Map<string, FloatingWindowInfo> = new Map()
+  private toolWindows: Map<string, ToolFloatingWindowInfo> = new Map()
   private windowWidth: number = 400
   private windowHeight: number = 200
   private windowGap: number = 10
@@ -52,6 +58,11 @@ class FloatingWindowManager {
         const newY = newBaseY + info.orderIndex * (this.windowHeight + this.windowGap)
         if (!info.window.isDestroyed()) {
           info.window.setPosition(newBaseX, newY)
+        }
+        // 同步移动右侧工具浮窗
+        const toolInfo = this.toolWindows.get(info.requestId)
+        if (toolInfo && !toolInfo.window.isDestroyed()) {
+          toolInfo.window.setPosition(newBaseX + this.windowWidth + this.windowGap, newY)
         }
       }
     })
@@ -180,6 +191,11 @@ class FloatingWindowManager {
         if (!info.window.isDestroyed()) {
           info.window.setPosition(newPos.x, newPos.y)
         }
+        // 同步重排右侧工具浮窗
+        const toolInfo = this.toolWindows.get(info.requestId)
+        if (toolInfo && !toolInfo.window.isDestroyed()) {
+          toolInfo.window.setPosition(newPos.x + this.windowWidth + this.windowGap, newPos.y)
+        }
       }
     }
     this.nextOrderIndex = this.windows.size > 0
@@ -188,10 +204,102 @@ class FloatingWindowManager {
   }
 
   // 发送内容到窗口
-  sendContent(requestId: string, content: string, type: 'thinking' | 'content' | 'tool_use' | 'server_tool_use' | 'start' | 'end') {
+  sendContent(requestId: string, content: string, type: 'thinking' | 'content' | 'tool_use' | 'server_tool_use' | 'start' | 'end' | 'tool_detail') {
     const info = this.windows.get(requestId)
     if (info && !info.window.isDestroyed()) {
       info.window.webContents.send('floating:content', { content, type })
+    }
+  }
+
+  // 发送 token 统计到主浮窗
+  sendTokens(requestId: string, input: number | null, output: number) {
+    const info = this.windows.get(requestId)
+    if (info && !info.window.isDestroyed()) {
+      info.window.webContents.send('floating:tokens', { input, output })
+    }
+  }
+
+  // 创建右侧工具详情浮窗
+  createToolWindow(requestId: string): BrowserWindow {
+    const existing = this.toolWindows.get(requestId)
+    if (existing && !existing.window.isDestroyed()) {
+      return existing.window
+    }
+
+    const mainInfo = this.windows.get(requestId)
+    const mainPos = mainInfo
+      ? mainInfo.window.getPosition()
+      : this.basePosition
+        ? [this.basePosition.x, this.basePosition.y]
+        : [screen.getPrimaryDisplay().workAreaSize.width - this.windowWidth - 20, 100]
+
+    const toolX = mainPos[0] + this.windowWidth + this.windowGap
+    const toolY = mainPos[1]
+
+    const window = new BrowserWindow({
+      width: this.windowWidth,
+      height: this.windowHeight,
+      x: toolX,
+      y: toolY,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      skipTaskbar: true,
+      focusable: true,
+      show: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/floating.js'),
+        sandbox: false,
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    })
+
+    window.setAlwaysOnTop(true, 'floating')
+
+    if (this.isDev && process.env['ELECTRON_RENDERER_URL']) {
+      window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/floating.html`)
+    } else {
+      window.loadFile(join(__dirname, '../renderer/floating.html'))
+    }
+
+    window.webContents.on('did-finish-load', () => {
+      window.showInactive()
+    })
+
+    this.toolWindows.set(requestId, {
+      window,
+      timeoutId: null
+    })
+
+    window.on('closed', () => {
+      this.toolWindows.delete(requestId)
+    })
+
+    console.log(`[FloatingWindow] 创建工具浮窗: ${requestId}, 位置: (${toolX}, ${toolY})`)
+    return window
+  }
+
+  // 发送工具详情到右侧浮窗
+  sendToolContent(requestId: string, content: string) {
+    const toolInfo = this.toolWindows.get(requestId)
+    if (toolInfo && !toolInfo.window.isDestroyed()) {
+      toolInfo.window.webContents.send('floating:content', { content, type: 'tool_detail' })
+    }
+  }
+
+  // 关闭工具浮窗
+  closeToolWindow(requestId: string) {
+    const toolInfo = this.toolWindows.get(requestId)
+    if (toolInfo) {
+      if (toolInfo.timeoutId) {
+        clearTimeout(toolInfo.timeoutId)
+      }
+      if (!toolInfo.window.isDestroyed()) {
+        toolInfo.window.close()
+      }
+      this.toolWindows.delete(requestId)
     }
   }
 
@@ -212,16 +320,16 @@ class FloatingWindowManager {
   // 渐变消失并关闭
   private fadeOutAndClose(requestId: string) {
     const info = this.windows.get(requestId)
-    if (!info || info.window.isDestroyed()) return
-
-    info.window.webContents.send('floating:fadeout')
-
-    setTimeout(() => {
-      const info = this.windows.get(requestId)
-      if (info && !info.window.isDestroyed()) {
-        info.window.close()
-      }
-    }, 500)
+    if (info && !info.window.isDestroyed()) {
+      info.window.webContents.send('floating:fadeout')
+      setTimeout(() => {
+        const info2 = this.windows.get(requestId)
+        if (info2 && !info2.window.isDestroyed()) {
+          info2.window.close()
+        }
+      }, 500)
+    }
+    this.closeToolWindow(requestId)
   }
 
   // 关闭指定窗口
@@ -235,6 +343,7 @@ class FloatingWindowManager {
         info.window.close()
       }
     }
+    this.closeToolWindow(requestId)
   }
 
   // 关闭所有窗口
@@ -249,6 +358,9 @@ class FloatingWindowManager {
     }
     this.windows.clear()
     this.nextOrderIndex = 0
+    for (const [requestId] of this.toolWindows) {
+      this.closeToolWindow(requestId)
+    }
   }
 
   // 检查是否启用

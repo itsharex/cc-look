@@ -92,16 +92,89 @@
       display: inline-block;
       margin: 2px 0;
     }
+
+    .content.tool-mode {
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+    }
+
+    .tool-detail-card {
+      background: rgba(20, 20, 20, 0.6);
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      margin: 10px;
+      overflow: hidden;
+    }
+
+    .tool-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(100, 200, 255, 0.95);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .tool-input {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.85);
+      background: rgba(0, 0, 0, 0.25);
+      padding: 8px;
+      border-radius: 6px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+      flex: 1;
+    }
+
+    .token-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.7);
+      background: rgba(0, 0, 0, 0.25);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      pointer-events: none;
+    }
+
+    .token-bar span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .token-bar .token-number {
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.95);
+    }
   </style>
 </head>
 <body>
   <div class="container" id="container">
     <div class="content" id="content"></div>
+    <div class="token-bar" id="token-bar">
+      <span>in: <span class="token-number" id="token-in">-</span></span>
+      <span>out: <span class="token-number" id="token-out">0</span></span>
+    </div>
   </div>
 
   <script>
     const contentEl = document.getElementById('content')
     const containerEl = document.getElementById('container')
+    const tokenInEl = document.getElementById('token-in')
+    const tokenOutEl = document.getElementById('token-out')
 
     // 拖拽状态
     let isDragging = false
@@ -175,6 +248,33 @@
         div.className = type === 'tool_use' ? 'tool-use' : 'server-tool-use'
         div.innerHTML = `<strong>🔧 ${name}</strong><br><code style="font-size: 11px; opacity: 0.8;">${escapeHtml(input.substring(0, 200))}${input.length > 200 ? '...' : ''}</code>`
         contentEl.appendChild(div)
+      } else if (type === 'tool_detail') {
+        // 右侧工具详情浮窗：整页替换展示
+        contentEl.classList.add('tool-mode')
+        const tokenBar = document.getElementById('token-bar')
+        if (tokenBar) tokenBar.style.display = 'none'
+        try {
+          const toolData = JSON.parse(content)
+          let inputDisplay = ''
+          if (typeof toolData.input === 'string') {
+            // 可能是未完成的 JSON 字符串，尝试格式化
+            try {
+              inputDisplay = JSON.stringify(JSON.parse(toolData.input), null, 2)
+            } catch {
+              inputDisplay = toolData.input
+            }
+          } else {
+            inputDisplay = JSON.stringify(toolData.input, null, 2)
+          }
+          contentEl.innerHTML = `
+            <div class="tool-detail-card">
+              <div class="tool-name">🔧 ${escapeHtml(toolData.name || 'unknown')}</div>
+              <pre class="tool-input">${escapeHtml(inputDisplay)}</pre>
+            </div>
+          `
+        } catch {
+          contentEl.innerHTML = `<div class="tool-detail-card"><pre class="tool-input">${escapeHtml(content)}</pre></div>`
+        }
       } else {
         const span = document.createElement('span')
         span.textContent = content
@@ -182,6 +282,12 @@
       }
 
       contentEl.scrollTop = contentEl.scrollHeight
+    })
+
+    // Token 统计
+    window.floatingApi.onTokens((data) => {
+      tokenInEl.textContent = data.input != null ? data.input : '-'
+      tokenOutEl.textContent = String(data.output)
     })
 
     // 渐变消失

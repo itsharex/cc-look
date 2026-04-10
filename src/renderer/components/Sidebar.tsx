@@ -91,7 +91,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Footer */}
       <div className="px-5 py-4 border-t border-white/5">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-gray-500">v1.2.0</span>
+          <span className="text-[11px] text-gray-500">v1.2.1</span>
           <div className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500/80" />
             <span className="text-[11px] text-gray-500">运行中</span>

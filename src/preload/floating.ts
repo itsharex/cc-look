@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('floatingApi', {
   onContent: (callback: (data: { content: string; type: string }) => void) => {
     ipcRenderer.on('floating:content', (_, data) => callback(data))
   },
+  onTokens: (callback: (data: { input: number | null; output: number }) => void) => {
+    ipcRenderer.on('floating:tokens', (_, data) => callback(data))
+  },
   onFadeout: (callback: () => void) => {
     ipcRenderer.on('floating:fadeout', () => callback())
   },

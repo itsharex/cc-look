@@ -305,7 +305,7 @@ export default function Settings() {
             <h3 className="font-semibold text-gray-900 dark:text-gray-100">关于</h3>
           </div>
           <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2 pl-10">
-            <p className="font-semibold text-gray-900 dark:text-gray-100">CC Look v1.3.3</p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">CC Look v1.3.5</p>
             <p className="text-gray-400">本地 AI API 代理软件 - 开源免费</p>
             <p>
               <a

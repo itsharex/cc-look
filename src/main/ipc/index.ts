@@ -73,7 +73,7 @@ const proxyManager = new ProxyManager()
 let mainWindow: BrowserWindow | null = null
 
 // 当前版本
-const CURRENT_VERSION = '1.3.3'
+const CURRENT_VERSION = '1.3.5'
 
 export function setupIpcHandlers(): void {
   mainWindow = BrowserWindow.getAllWindows()[0]

@@ -20,5 +20,11 @@ contextBridge.exposeInMainWorld('floatingApi', {
   },
   dragEnd: (dx: number, dy: number) => {
     ipcRenderer.send('floating:dragend', { dx, dy })
+  },
+  hoverEnter: () => {
+    ipcRenderer.send('floating:hoverEnter')
+  },
+  hoverLeave: () => {
+    ipcRenderer.send('floating:hoverLeave')
   }
 })

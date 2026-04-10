@@ -7,6 +7,7 @@ interface FloatingWindowInfo {
   requestId: string
   timeoutId: NodeJS.Timeout | null
   orderIndex: number
+  closePending: boolean
 }
 
 interface ToolFloatingWindowInfo {
@@ -30,9 +31,60 @@ class FloatingWindowManager {
   private basePosition: FloatingWindowPosition | null = null
   private dragStartBasePos: FloatingWindowPosition | null = null
   private isInitialized: boolean = false
+  private hoveredWindows: Set<string> = new Set()
+  private isHovering: boolean = false
+  private hoverCheckInterval: NodeJS.Timeout | null = null
 
   constructor() {
     this.isDev = process.env.NODE_ENV === 'development' || !require('electron').app.isPackaged
+    this.startHoverPolling()
+  }
+
+  // 轮询检测鼠标是否悬停在任意浮动窗上（兜底机制，修复 mouseleave 不触发的问题）
+  private startHoverPolling() {
+    if (this.hoverCheckInterval) return
+    this.hoverCheckInterval = setInterval(() => {
+      const point = screen.getCursorScreenPoint()
+      let currentlyHovering = false
+
+      for (const info of this.windows.values()) {
+        if (!info.window.isDestroyed()) {
+          const b = info.window.getBounds()
+          if (point.x >= b.x && point.x <= b.x + b.width && point.y >= b.y && point.y <= b.y + b.height) {
+            currentlyHovering = true
+            break
+          }
+        }
+      }
+      if (!currentlyHovering) {
+        for (const info of this.toolWindows.values()) {
+          if (!info.window.isDestroyed()) {
+            const b = info.window.getBounds()
+            if (point.x >= b.x && point.x <= b.x + b.width && point.y >= b.y && point.y <= b.y + b.height) {
+              currentlyHovering = true
+              break
+            }
+          }
+        }
+      }
+
+      if (currentlyHovering && !this.isHovering) {
+        this.isHovering = true
+        for (const info of this.windows.values()) {
+          if (info.timeoutId) {
+            clearTimeout(info.timeoutId)
+            info.timeoutId = null
+          }
+        }
+      } else if (!currentlyHovering && this.isHovering) {
+        this.isHovering = false
+        for (const [rid, info] of this.windows) {
+          if (info.closePending && !info.window.isDestroyed() && !info.timeoutId) {
+            this.scheduleClose(rid, 3000)
+          }
+        }
+      }
+    }, 200)
   }
 
   // 初始化 IPC 监听
@@ -41,13 +93,13 @@ class FloatingWindowManager {
     this.isInitialized = true
 
     // 拖拽开始
-    ipcMain.on('floating:dragstart', (event) => {
+    ipcMain.on('floating:dragstart', (_event) => {
       this.dragStartBasePos = { ...this.basePosition! }
       console.log('[FloatingWindow] 拖拽开始, basePos:', this.dragStartBasePos)
     })
 
     // 拖拽移动
-    ipcMain.on('floating:drag', (event, delta: { dx: number; dy: number }) => {
+    ipcMain.on('floating:drag', (_event, delta: { dx: number; dy: number }) => {
       if (!this.dragStartBasePos) return
 
       const newBaseX = this.dragStartBasePos.x + delta.dx
@@ -68,7 +120,7 @@ class FloatingWindowManager {
     })
 
     // 拖拽结束
-    ipcMain.on('floating:dragend', (event, delta: { dx: number; dy: number }) => {
+    ipcMain.on('floating:dragend', (_event, delta: { dx: number; dy: number }) => {
       if (!this.dragStartBasePos) return
 
       // 保存最终位置
@@ -80,6 +132,35 @@ class FloatingWindowManager {
       this.dragStartBasePos = null
 
       console.log('[FloatingWindow] 拖拽结束, 新位置:', this.basePosition)
+    })
+
+    // 鼠标进入任意浮动窗：暂停所有自动关闭计时器
+    ipcMain.on('floating:hoverEnter', (_event) => {
+      const requestId = this.findRequestIdByWebContents(_event.sender)
+      if (requestId) this.hoveredWindows.add(requestId)
+      if (this.hoveredWindows.size === 1) {
+        console.log('[FloatingWindow] 鼠标进入浮动窗，暂停自动关闭')
+        for (const info of this.windows.values()) {
+          if (info.timeoutId) {
+            clearTimeout(info.timeoutId)
+            info.timeoutId = null
+          }
+        }
+      }
+    })
+
+    // 鼠标离开所有浮动窗：恢复自动关闭计时器
+    ipcMain.on('floating:hoverLeave', (_event) => {
+      const requestId = this.findRequestIdByWebContents(_event.sender)
+      if (requestId) this.hoveredWindows.delete(requestId)
+      if (this.hoveredWindows.size === 0) {
+        console.log('[FloatingWindow] 鼠标离开浮动窗，恢复自动关闭')
+        for (const [rid, info] of this.windows) {
+          if (info.closePending && !info.window.isDestroyed()) {
+            this.scheduleClose(rid, 3000)
+          }
+        }
+      }
     })
   }
 
@@ -101,6 +182,17 @@ class FloatingWindowManager {
   // 保存位置
   private savePosition(pos: FloatingWindowPosition) {
     db.setSettings({ floatingWindowPosition: pos } as any)
+  }
+
+  // 根据 WebContents 查找 requestId（主窗口或工具窗口）
+  private findRequestIdByWebContents(webContents: Electron.WebContents): string | null {
+    for (const [requestId, info] of this.windows) {
+      if (info.window.webContents === webContents) return requestId
+    }
+    for (const [requestId, info] of this.toolWindows) {
+      if (info.window.webContents === webContents) return requestId
+    }
+    return null
   }
 
   // 获取窗口应该显示的位置
@@ -167,7 +259,8 @@ class FloatingWindowManager {
       window,
       requestId,
       timeoutId: null,
-      orderIndex
+      orderIndex,
+      closePending: false
     })
 
     window.on('closed', () => {
@@ -310,6 +403,14 @@ class FloatingWindowManager {
 
     if (info.timeoutId) {
       clearTimeout(info.timeoutId)
+      info.timeoutId = null
+    }
+
+    info.closePending = true
+
+    if (this.isHovering) {
+      console.log(`[FloatingWindow] ${requestId} 等待关闭（鼠标悬停中）`)
+      return
     }
 
     info.timeoutId = setTimeout(() => {

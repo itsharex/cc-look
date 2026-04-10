@@ -48,7 +48,10 @@
       color: rgba(255, 255, 255, 0.9);
       word-wrap: break-word;
       white-space: pre-wrap;
-      cursor: auto;
+    }
+
+    .content *, .tool-input * {
+      cursor: inherit;
     }
 
     .content::-webkit-scrollbar {
@@ -196,6 +199,14 @@
     let isDragging = false
     let startX = 0
     let startY = 0
+
+    // 鼠标进入/离开浮动窗
+    document.addEventListener('mouseenter', () => {
+      window.floatingApi.hoverEnter()
+    })
+    document.addEventListener('mouseleave', () => {
+      window.floatingApi.hoverLeave()
+    })
 
     // 鼠标按下：任意位置均可拖动（滚轮滚动不受影响）
     document.addEventListener('mousedown', (e) => {

@@ -175,6 +175,15 @@ export default function Logs() {
     return platforms.find(p => p.id === platformId)?.name || 'Unknown'
   }
 
+  const getHostFromBaseUrl = (baseUrl: string | undefined): string => {
+    if (!baseUrl) return ''
+    try {
+      return new URL(baseUrl).host
+    } catch {
+      return baseUrl
+    }
+  }
+
   const getProxyStatus = (platformId: string) => {
     return proxyStatuses.get(platformId)?.status || 'stopped'
   }
@@ -222,7 +231,7 @@ export default function Logs() {
                 <span className="text-xs text-gray-400 font-mono">{request.method} {request.path}</span>
               </div>
               <div className="text-xs text-gray-400 mt-0.5">
-                进行中 · {formatDuration(duration)}
+                {getHostFromBaseUrl(request.baseUrl)} · 进行中 · {formatDuration(duration)}
               </div>
             </div>
           </div>
@@ -307,7 +316,7 @@ export default function Logs() {
                 <span className="text-xs text-gray-400 font-mono">{log.method} {log.path}</span>
               </div>
               <div className="text-[11px] text-gray-400 mt-0.5">
-                {new Date(log.createdAt).toLocaleString()} · {formatDuration(log.duration)}
+                {getHostFromBaseUrl(log.baseUrl)} · {new Date(log.createdAt).toLocaleString()} · {formatDuration(log.duration)}
               </div>
             </div>
           </div>

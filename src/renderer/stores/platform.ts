@@ -8,6 +8,7 @@ export interface ActiveRequest {
   platformName: string
   method: string
   path: string
+  baseUrl?: string
   startTime: number
   rawContent: string[]
   status: 'pending' | 'streaming' | 'error'
@@ -163,11 +164,13 @@ export const useLogStore = create<LogState>((set, get) => ({
     // 解析 start 事件中的请求信息
     let method = 'POST'
     let path = '/v1/messages'
+    let baseUrl: string | undefined
     if (event.content) {
       try {
         const requestData = JSON.parse(event.content)
         method = requestData.method || 'POST'
         path = requestData.path || '/v1/messages'
+        baseUrl = requestData.baseUrl
       } catch {
         // ignore parse error
       }
@@ -179,6 +182,7 @@ export const useLogStore = create<LogState>((set, get) => ({
       platformName,
       method,
       path,
+      baseUrl,
       startTime: event.timestamp,
       rawContent: [],
       status: 'pending'

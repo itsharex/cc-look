@@ -28,15 +28,34 @@
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
       transition: opacity 0.5s ease-out;
-      cursor: grab;
     }
 
     .container.fading {
       opacity: 0;
     }
 
-    .container.dragging {
+    .drag-handle {
+      height: 24px;
+      background: rgba(40, 40, 40, 0.6);
+      border-radius: 12px 12px 0 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+    }
+
+    .drag-handle.dragging {
       cursor: grabbing;
+    }
+
+    .drag-handle .grip {
+      width: 24px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
     }
 
     .content {
@@ -48,7 +67,6 @@
       color: rgba(255, 255, 255, 0.9);
       word-wrap: break-word;
       white-space: pre-wrap;
-      pointer-events: none;
     }
 
     .content::-webkit-scrollbar {
@@ -146,7 +164,6 @@
       color: rgba(255, 255, 255, 0.7);
       background: rgba(0, 0, 0, 0.25);
       border-top: 1px solid rgba(255, 255, 255, 0.08);
-      pointer-events: none;
     }
 
     .token-bar span {
@@ -163,6 +180,9 @@
 </head>
 <body>
   <div class="container" id="container">
+    <div class="drag-handle" id="drag-handle">
+      <div class="grip"></div>
+    </div>
     <div class="content" id="content"></div>
     <div class="token-bar" id="token-bar">
       <span>in: <span class="token-number" id="token-in">-</span></span>
@@ -173,6 +193,7 @@
   <script>
     const contentEl = document.getElementById('content')
     const containerEl = document.getElementById('container')
+    const dragHandleEl = document.getElementById('drag-handle')
     const tokenInEl = document.getElementById('token-in')
     const tokenOutEl = document.getElementById('token-out')
 
@@ -181,12 +202,12 @@
     let startX = 0
     let startY = 0
 
-    // 鼠标按下
-    document.addEventListener('mousedown', (e) => {
+    // 鼠标按下（仅在拖拽手柄上）
+    dragHandleEl.addEventListener('mousedown', (e) => {
       isDragging = true
       startX = e.screenX
       startY = e.screenY
-      containerEl.classList.add('dragging')
+      dragHandleEl.classList.add('dragging')
       window.floatingApi.dragStart()
     })
 
@@ -202,7 +223,7 @@
     document.addEventListener('mouseup', (e) => {
       if (!isDragging) return
       isDragging = false
-      containerEl.classList.remove('dragging')
+      dragHandleEl.classList.remove('dragging')
       const dx = e.screenX - startX
       const dy = e.screenY - startY
       window.floatingApi.dragEnd(dx, dy)
@@ -274,6 +295,11 @@
           `
         } catch {
           contentEl.innerHTML = `<div class="tool-detail-card"><pre class="tool-input">${escapeHtml(content)}</pre></div>`
+        }
+        // 工具详情超出时自动滚动到最底部
+        const toolInputEl = contentEl.querySelector('.tool-input')
+        if (toolInputEl) {
+          toolInputEl.scrollTop = toolInputEl.scrollHeight
         }
       } else {
         const span = document.createElement('span')

@@ -416,7 +416,8 @@ export class ProxyManager {
       content: JSON.stringify({
         method: req.method,
         path: req.path,
-        body: requestBody
+        body: requestBody,
+        baseUrl: platform.baseUrl
       })
     })
 

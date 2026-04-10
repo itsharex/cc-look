@@ -2,6 +2,63 @@ import { useEffect, useState, useRef } from 'react'
 import { useLogStore, type ActiveRequest } from '../stores/platform'
 import type { RequestLog } from '@shared/types'
 
+const ResizablePanel = ({
+  height,
+  onResize,
+  children,
+  minHeight = 60,
+  maxHeight = 600,
+}: {
+  height: number
+  onResize: (h: number) => void
+  children: React.ReactNode
+  minHeight?: number
+  maxHeight?: number
+}) => {
+  const [resizing, setResizing] = useState(false)
+  const startYRef = useRef(0)
+  const startHeightRef = useRef(0)
+  const onResizeRef = useRef(onResize)
+
+  useEffect(() => {
+    onResizeRef.current = onResize
+  }, [onResize])
+
+  useEffect(() => {
+    if (!resizing) return
+    const handleMove = (e: MouseEvent) => {
+      const delta = e.clientY - startYRef.current
+      const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeightRef.current + delta))
+      onResizeRef.current(newHeight)
+    }
+    const handleUp = () => setResizing(false)
+    document.body.style.cursor = 'ns-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+    return () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+  }, [resizing, minHeight, maxHeight])
+
+  return (
+    <div className="relative" style={{ height }}>
+      <div className="h-full overflow-auto bg-gray-900 text-gray-300 rounded-xl p-3 font-mono text-xs">{children}</div>
+      <div
+        onMouseDown={(e) => {
+          startYRef.current = e.clientY
+          startHeightRef.current = height
+          setResizing(true)
+        }}
+        className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-primary-300/50 active:bg-primary-400/50 transition-colors rounded-b-xl"
+      />
+    </div>
+  )
+}
+
 export default function Logs() {
   const {
     platforms,
@@ -21,24 +78,23 @@ export default function Logs() {
   const [filter, setFilter] = useState({ platformId: '', status: '' })
   const [expandedActiveRequest, setExpandedActiveRequest] = useState<string | null>(null)
   const [expandedHeaders, setExpandedHeaders] = useState(false)
+  const [detailWidth, setDetailWidth] = useState(384)
+  const [isResizing, setIsResizing] = useState(false)
+  const [heights, setHeights] = useState({
+    activeRaw: 240,
+    requestBody: 160,
+    responseBody: 240,
+    streamData: 240,
+  })
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    console.log('[Logs] Component mounted, setting up stream subscription')
     fetchPlatforms()
     fetchLogs()
-
-    // 订阅流事件
     const unsubscribe = subscribeToStream()
-    console.log('[Logs] Stream subscription set up')
-
-    return () => {
-      console.log('[Logs] Component unmounting, cleaning up subscription')
-      unsubscribe()
-    }
+    return () => { unsubscribe() }
   }, [fetchPlatforms, fetchLogs, subscribeToStream])
 
-  // 自动滚动活动请求的内容
   useEffect(() => {
     if (expandedActiveRequest && logContainerRef.current) {
       const element = logContainerRef.current.querySelector(`#active-${expandedActiveRequest}`)
@@ -47,6 +103,29 @@ export default function Logs() {
       }
     }
   }, [activeRequests, expandedActiveRequest])
+
+  useEffect(() => {
+    if (!isResizing) return
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX
+      if (newWidth >= 280 && newWidth <= 800) {
+        setDetailWidth(newWidth)
+      }
+    }
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
 
   const handleExport = async (format: 'json' | 'csv') => {
     const content = await exportLogs(format)
@@ -77,10 +156,10 @@ export default function Logs() {
   }
 
   const getStatusColor = (status: number) => {
-    if (status >= 200 && status < 300) return 'text-green-600 bg-green-100'
-    if (status >= 400 && status < 500) return 'text-yellow-600 bg-yellow-100'
-    if (status >= 500) return 'text-red-600 bg-red-100'
-    return 'text-gray-600 bg-gray-100'
+    if (status >= 200 && status < 300) return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-800'
+    if (status >= 400 && status < 500) return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-800'
+    if (status >= 500) return 'bg-red-50 text-red-700 ring-1 ring-red-200 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-800'
+    return 'bg-gray-50 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:ring-gray-600'
   }
 
   const formatJson = (str: string | undefined): string => {
@@ -100,7 +179,6 @@ export default function Logs() {
     return proxyStatuses.get(platformId)?.status || 'stopped'
   }
 
-  // 过滤日志
   const filteredLogs = logs.filter((log) => {
     if (filter.status === 'success' && (log.responseStatus < 200 || log.responseStatus >= 300)) return false
     if (filter.status === 'error' && log.responseStatus < 400) return false
@@ -108,7 +186,6 @@ export default function Logs() {
     return true
   })
 
-  // 渲染活动请求
   const renderActiveRequest = (request: ActiveRequest) => {
     const isExpanded = expandedActiveRequest === request.requestId
     const duration = Date.now() - request.startTime
@@ -124,47 +201,44 @@ export default function Logs() {
       <div
         key={request.requestId}
         id={`active-${request.requestId}`}
-        className={`bg-yellow-50 border-2 border-yellow-300 rounded-lg overflow-hidden ${
-          request.status === 'error' ? 'bg-red-50 border-red-300' : ''
+        className={`rounded-2xl overflow-hidden border-2 transition-all ${
+          request.status === 'error'
+            ? 'bg-red-50/50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+            : 'bg-amber-50/50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800'
         }`}
       >
-        {/* 请求头部 */}
         <div
-          className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-yellow-100"
+          className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-white/50 dark:hover:bg-gray-700/50 transition-colors"
           onClick={() => setExpandedActiveRequest(isExpanded ? null : request.requestId)}
         >
           <div className="flex items-center gap-3">
-            {/* 动画指示器 */}
-            <div className={`w-3 h-3 rounded-full ${
-              request.status === 'streaming' ? 'bg-green-500 animate-pulse' :
-              request.status === 'error' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'
+            <div className={`w-2.5 h-2.5 rounded-full ${
+              request.status === 'streaming' ? 'bg-emerald-500 animate-pulse' :
+              request.status === 'error' ? 'bg-red-500' : 'bg-amber-500 animate-pulse'
             }`} />
-
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-900">{request.platformName}</span>
-                <span className="text-xs text-gray-500">{request.method} {request.path}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100 text-sm">{request.platformName}</span>
+                <span className="text-xs text-gray-400 font-mono">{request.method} {request.path}</span>
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">
+              <div className="text-xs text-gray-400 mt-0.5">
                 进行中 · {formatDuration(duration)}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* 关闭连接按钮 */}
             <button
               onClick={handleAbort}
-              className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-              title="关闭连接"
+              className="px-2.5 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium"
             >
               关闭
             </button>
-            <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded">
+            <span className="text-[11px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">
               {request.rawContent.length} chunks
             </span>
             <svg
-              className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -174,34 +248,37 @@ export default function Logs() {
           </div>
         </div>
 
-        {/* 展开的原始内容 */}
         {isExpanded && (
-          <div className="border-t border-yellow-200">
-            <div className="px-4 py-2 bg-yellow-100 text-xs font-medium text-yellow-800">
+          <div className="border-t border-amber-200/50 dark:border-amber-800/50">
+            <div className="px-4 py-2 bg-amber-100/50 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
               实时 SSE 数据
             </div>
-            <div
-              ref={logContainerRef}
-              className="p-3 bg-gray-900 text-gray-300 font-mono text-xs max-h-64 overflow-auto"
+            <ResizablePanel
+              height={heights.activeRaw}
+              onResize={(h) => setHeights((prev) => ({ ...prev, activeRaw: h }))}
             >
-              {request.rawContent.length === 0 ? (
-                <div className="text-gray-500">等待数据...</div>
-              ) : (
-                request.rawContent.map((content, index) => (
-                  <div key={index} className="mb-1">
-                    <span className="text-gray-500">{index + 1}:</span>{' '}
-                    <span className="text-green-400">{content}</span>
-                  </div>
-                ))
-              )}
-            </div>
+              <div
+                ref={logContainerRef}
+                className="h-full"
+              >
+                {request.rawContent.length === 0 ? (
+                  <div className="text-gray-500 text-center py-4">等待数据...</div>
+                ) : (
+                  request.rawContent.map((content, index) => (
+                    <div key={index} className="mb-1">
+                      <span className="text-gray-500">{index + 1}:</span>{' '}
+                      <span className="text-emerald-400">{content}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ResizablePanel>
           </div>
         )}
       </div>
     )
   }
 
-  // 渲染历史日志
   const renderHistoryLog = (log: RequestLog) => {
     const isSelected = selectedLog && selectedType === 'history' && (selectedLog as RequestLog).id === log.id
 
@@ -213,52 +290,49 @@ export default function Logs() {
           setSelectedType('history')
           setExpandedHeaders(false)
         }}
-        className={`bg-white rounded-lg p-3 border cursor-pointer hover:shadow-md transition-shadow ${
-          isSelected ? 'border-primary-500 shadow-md' : 'border-gray-200'
+        className={`bg-white dark:bg-gray-800 rounded-xl p-3.5 border cursor-pointer transition-all ${
+          isSelected
+            ? 'border-primary-300 shadow-card-hover ring-1 ring-primary-100'
+            : 'border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600 hover:shadow-card'
         }`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* 状态点 */}
             <span className={`status-dot ${
               log.responseStatus >= 200 && log.responseStatus < 300 ? 'running' : 'stopped'
             }`} />
-
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-900">{getPlatformName(log.platformId)}</span>
-                <span className="text-xs text-gray-500">{log.method} {log.path}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100 text-sm">{getPlatformName(log.platformId)}</span>
+                <span className="text-xs text-gray-400 font-mono">{log.method} {log.path}</span>
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">
+              <div className="text-[11px] text-gray-400 mt-0.5">
                 {new Date(log.createdAt).toLocaleString()} · {formatDuration(log.duration)}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Token 统计 */}
+          <div className="flex items-center gap-1.5">
             {(log.inputTokens || log.outputTokens) && (
-              <span className="text-xs text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded" title="输入/输出 tokens">
+              <span className="text-[11px] text-violet-600 bg-violet-50 dark:bg-violet-900/30 dark:text-violet-400 px-2 py-0.5 rounded-full font-medium ring-1 ring-violet-200 dark:ring-violet-800" title="输入/输出 tokens">
                 {log.inputTokens || 0}/{log.outputTokens || 0}
               </span>
             )}
-            {/* 首Token时间 */}
             {log.firstTokenTime && (
-              <span className="text-xs text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded" title="首 Token 时间">
+              <span className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium ring-1 ring-amber-200 dark:ring-amber-800" title="首 Token 时间">
                 TTFT: {formatFirstTokenTime(log.firstTokenTime)}
               </span>
             )}
-            {/* 输出速度 */}
             {log.tokensPerSecond && (
-              <span className="text-xs text-green-600 bg-green-100 px-1.5 py-0.5 rounded" title="输出速度">
+              <span className="text-[11px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium ring-1 ring-emerald-200 dark:ring-emerald-800" title="输出速度">
                 {formatTokenSpeed(log.tokensPerSecond)}
               </span>
             )}
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(log.responseStatus)}`}>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${getStatusColor(log.responseStatus)}`}>
               {log.responseStatus}
             </span>
             {log.isStream && (
-              <span className="text-xs text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Stream</span>
+              <span className="text-[11px] text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium ring-1 ring-blue-200 dark:ring-blue-800">Stream</span>
             )}
           </div>
         </div>
@@ -266,48 +340,52 @@ export default function Logs() {
     )
   }
 
-  // 渲染详情面板
   const renderDetailPanel = () => {
     if (!selectedLog) return null
 
     if (selectedType === 'active') {
       const request = selectedLog as ActiveRequest
       return (
-        <div className="w-96 bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 bg-yellow-50 flex items-center justify-between">
-            <span className="font-medium">实时请求详情</span>
+        <div style={{ width: detailWidth }} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-elevated animate-slide-in-right flex flex-col">
+          <div className="px-4 py-3.5 border-b border-gray-100 dark:border-gray-700 bg-amber-50/50 dark:bg-amber-900/20 flex items-center justify-between">
+            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">实时请求详情</span>
             <button
               onClick={() => setSelectedLog(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          <div className="p-4">
+          <div className="p-4 flex-1 overflow-auto">
             <div className="space-y-3 text-sm">
               <div>
-                <div className="text-gray-500 text-xs">平台</div>
-                <div className="font-medium">{request.platformName}</div>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">平台</div>
+                <div className="font-medium mt-1">{request.platformName}</div>
               </div>
               <div>
-                <div className="text-gray-500 text-xs">路径</div>
-                <div className="font-mono text-xs">{request.method} {request.path}</div>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">路径</div>
+                <div className="font-mono text-xs mt-1">{request.method} {request.path}</div>
               </div>
               <div>
-                <div className="text-gray-500 text-xs">持续时间</div>
-                <div>{formatDuration(Date.now() - request.startTime)}</div>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">持续时间</div>
+                <div className="mt-1">{formatDuration(Date.now() - request.startTime)}</div>
               </div>
               <div>
-                <div className="text-gray-500 text-xs mb-2">原始数据 ({request.rawContent.length} 条)</div>
-                <div className="bg-gray-900 text-gray-300 p-3 rounded font-mono text-xs max-h-60 overflow-auto">
-                  {request.rawContent.map((content, index) => (
-                    <div key={index} className="mb-1">
-                      <span className="text-gray-500">[{index + 1}]</span> {content}
-                    </div>
-                  ))}
-                </div>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium mb-2">原始数据 ({request.rawContent.length} 条)</div>
+                <ResizablePanel
+                  height={heights.activeRaw}
+                  onResize={(h) => setHeights((prev) => ({ ...prev, activeRaw: h }))}
+                >
+                  <div className="h-full">
+                    {request.rawContent.map((content, index) => (
+                      <div key={index} className="mb-1">
+                        <span className="text-gray-500">[{index + 1}]</span> {content}
+                      </div>
+                    ))}
+                  </div>
+                </ResizablePanel>
               </div>
             </div>
           </div>
@@ -315,32 +393,23 @@ export default function Logs() {
       )
     }
 
-    // 历史日志详情
     const log = selectedLog as RequestLog
 
-    // 生成 curl 命令
     const generateCurl = (log: RequestLog): string => {
       const url = `${log.baseUrl}${log.path}`
       let curl = `curl '${url}'`
-
-      // 添加请求方法
       if (log.method !== 'GET') {
         curl += ` \\\n  -X ${log.method}`
       }
-
-      // 添加请求头
       if (log.requestHeaders && Object.keys(log.requestHeaders).length > 0) {
         for (const [key, value] of Object.entries(log.requestHeaders)) {
           curl += ` \\\n  -H '${key}: ${value}'`
         }
       }
-
-      // 添加请求体
       if (log.requestBody) {
         const body = log.requestBody.replace(/'/g, "'\\''")
         curl += ` \\\n  -d '${body}'`
       }
-
       return curl
     }
 
@@ -352,25 +421,25 @@ export default function Logs() {
     }
 
     return (
-      <div className="w-96 bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-          <span className="font-medium">请求详情</span>
+      <div style={{ width: detailWidth }} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-elevated animate-slide-in-right flex flex-col">
+        <div className="px-4 py-3.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/50 flex items-center justify-between">
+          <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">请求详情</span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => copyCurl(log)}
-              className="text-primary-600 hover:text-primary-700 text-xs flex items-center gap-1"
+              className="text-primary-600 hover:text-primary-700 text-xs flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-primary-50 transition-colors"
               title="复制 curl 命令"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              复制 curl
+              <span className="font-medium">curl</span>
             </button>
             <button
               onClick={() => setSelectedLog(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -382,51 +451,51 @@ export default function Logs() {
             {/* 基本信息 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-gray-500 text-xs">平台</div>
-                <div className="font-medium">{getPlatformName(log.platformId)}</div>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">平台</div>
+                <div className="font-medium mt-1">{getPlatformName(log.platformId)}</div>
               </div>
               <div>
-                <div className="text-gray-500 text-xs">状态码</div>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(log.responseStatus)}`}>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">状态码</div>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 inline-block ${getStatusColor(log.responseStatus)}`}>
                   {log.responseStatus}
                 </span>
               </div>
               <div>
-                <div className="text-gray-500 text-xs">耗时</div>
-                <div>{formatDuration(log.duration)}</div>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">耗时</div>
+                <div className="mt-1">{formatDuration(log.duration)}</div>
               </div>
               <div>
-                <div className="text-gray-500 text-xs">时间</div>
-                <div>{new Date(log.createdAt).toLocaleString()}</div>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">时间</div>
+                <div className="mt-1 text-xs">{new Date(log.createdAt).toLocaleString()}</div>
               </div>
             </div>
 
             {/* Token 统计 */}
             {(log.isStream || log.inputTokens || log.outputTokens) && (
-              <div className="bg-purple-50 rounded-lg p-3">
-                <div className="text-purple-700 text-xs font-medium mb-2">Token 统计</div>
+              <div className="bg-violet-50/50 dark:bg-violet-900/20 rounded-xl p-3.5 ring-1 ring-violet-200/50 dark:ring-violet-800/50">
+                <div className="text-violet-600 dark:text-violet-400 text-[11px] font-semibold uppercase tracking-wider mb-2.5">Token 统计</div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <div className="text-purple-500 text-xs">输入 Tokens</div>
-                    <div className="font-medium text-purple-700">{log.inputTokens ?? '-'}</div>
+                    <div className="text-violet-400 text-xs">输入 Tokens</div>
+                    <div className="font-semibold text-violet-700 dark:text-violet-300 mt-0.5">{log.inputTokens ?? '-'}</div>
                   </div>
                   <div>
-                    <div className="text-purple-500 text-xs">输出 Tokens</div>
-                    <div className="font-medium text-purple-700">{log.outputTokens ?? '-'}</div>
+                    <div className="text-violet-400 text-xs">输出 Tokens</div>
+                    <div className="font-semibold text-violet-700 dark:text-violet-300 mt-0.5">{log.outputTokens ?? '-'}</div>
                   </div>
                   {log.cacheReadInputTokens && (
                     <div>
-                      <div className="text-purple-500 text-xs">缓存读取 Tokens</div>
-                      <div className="font-medium text-purple-700">{log.cacheReadInputTokens}</div>
+                      <div className="text-violet-400 text-xs">缓存读取 Tokens</div>
+                      <div className="font-semibold text-violet-700 dark:text-violet-300 mt-0.5">{log.cacheReadInputTokens}</div>
                     </div>
                   )}
                   <div>
-                    <div className="text-purple-500 text-xs">首 Token 时间</div>
-                    <div className="font-medium text-purple-700">{formatFirstTokenTime(log.firstTokenTime)}</div>
+                    <div className="text-violet-400 text-xs">首 Token 时间</div>
+                    <div className="font-semibold text-violet-700 dark:text-violet-300 mt-0.5">{formatFirstTokenTime(log.firstTokenTime)}</div>
                   </div>
                   <div>
-                    <div className="text-purple-500 text-xs">输出速度</div>
-                    <div className="font-medium text-purple-700">{formatTokenSpeed(log.tokensPerSecond)}</div>
+                    <div className="text-violet-400 text-xs">输出速度</div>
+                    <div className="font-semibold text-violet-700 dark:text-violet-300 mt-0.5">{formatTokenSpeed(log.tokensPerSecond)}</div>
                   </div>
                 </div>
               </div>
@@ -434,23 +503,23 @@ export default function Logs() {
 
             {/* URL */}
             <div>
-              <div className="text-gray-500 text-xs mb-1">请求地址</div>
-              <div className="bg-gray-900 text-green-400 p-2 rounded font-mono text-xs">
+              <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium mb-1.5">请求地址</div>
+              <div className="bg-gray-900 text-emerald-400 p-2.5 rounded-xl font-mono text-xs">
                 {log.method} {log.path}
               </div>
-              <div className="text-gray-400 text-xs mt-1">{log.baseUrl}</div>
+              <div className="text-gray-400 text-[11px] mt-1">{log.baseUrl}</div>
             </div>
 
             {/* 请求头 */}
             {log.requestHeaders && Object.keys(log.requestHeaders).length > 0 && (
               <div>
                 <div
-                  className="flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 -mx-1 px-1 py-1 rounded"
+                  className="flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-700/50 -mx-1 px-1 py-1.5 rounded-lg transition-colors"
                   onClick={() => setExpandedHeaders(!expandedHeaders)}
                 >
-                  <span className="text-gray-500 text-xs">请求头</span>
+                  <span className="text-gray-400 text-[11px] uppercase tracking-wider font-medium">请求头</span>
                   <svg
-                    className={`w-4 h-4 text-gray-400 transition-transform ${expandedHeaders ? 'rotate-180' : ''}`}
+                    className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expandedHeaders ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -459,10 +528,11 @@ export default function Logs() {
                   </svg>
                 </div>
                 {expandedHeaders && (
-                  <div className="bg-gray-100 p-2 rounded font-mono text-xs mt-1">
+                  <div className="bg-gray-50 dark:bg-gray-700 p-2.5 rounded-xl font-mono text-xs mt-1 ring-1 ring-gray-100 dark:ring-gray-600">
                     {Object.entries(log.requestHeaders).map(([key, value]) => (
-                      <div key={key}>
-                        <span className="text-purple-600">{key}:</span> {value}
+                      <div key={key} className="py-0.5">
+                        <span className="text-violet-600 dark:text-violet-400">{key}:</span>{' '}
+                        <span className="text-gray-600 dark:text-gray-300">{value}</span>
                       </div>
                     ))}
                   </div>
@@ -473,38 +543,53 @@ export default function Logs() {
             {/* 请求体 */}
             {log.requestBody && (
               <div>
-                <div className="text-gray-500 text-xs mb-1">请求体</div>
-                <pre className="bg-gray-900 text-gray-300 p-2 rounded font-mono text-xs overflow-auto max-h-40">
-                  {formatJson(log.requestBody)}
-                </pre>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium mb-1.5">请求体</div>
+                <ResizablePanel
+                  height={heights.requestBody}
+                  onResize={(h) => setHeights((prev) => ({ ...prev, requestBody: h }))}
+                >
+                  <pre className="m-0">
+                    {formatJson(log.requestBody)}
+                  </pre>
+                </ResizablePanel>
               </div>
             )}
 
             {/* 响应体 */}
             {log.responseBody && (
               <div>
-                <div className="text-gray-500 text-xs mb-1">响应体</div>
-                <pre className="bg-gray-900 text-gray-300 p-2 rounded font-mono text-xs overflow-auto max-h-60">
-                  {formatJson(log.responseBody)}
-                </pre>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium mb-1.5">响应体</div>
+                <ResizablePanel
+                  height={heights.responseBody}
+                  onResize={(h) => setHeights((prev) => ({ ...prev, responseBody: h }))}
+                >
+                  <pre className="m-0">
+                    {formatJson(log.responseBody)}
+                  </pre>
+                </ResizablePanel>
               </div>
             )}
 
-            {/* 汇总内容（流式输出） */}
+            {/* 汇总内容 */}
             {log.isStream && log.streamData && (
               <div>
-                <div className="text-gray-500 text-xs mb-1">汇总内容</div>
-                <pre className="bg-gray-900 text-gray-300 p-2 rounded font-mono text-xs overflow-auto max-h-60">
-                  {formatJson(log.streamData)}
-                </pre>
+                <div className="text-gray-400 text-[11px] uppercase tracking-wider font-medium mb-1.5">汇总内容</div>
+                <ResizablePanel
+                  height={heights.streamData}
+                  onResize={(h) => setHeights((prev) => ({ ...prev, streamData: h }))}
+                >
+                  <pre className="m-0">
+                    {formatJson(log.streamData)}
+                  </pre>
+                </ResizablePanel>
               </div>
             )}
 
             {/* 错误信息 */}
             {log.error && (
               <div>
-                <div className="text-red-500 text-xs mb-1">错误</div>
-                <div className="bg-red-50 text-red-600 p-2 rounded text-xs">
+                <div className="text-red-400 text-[11px] uppercase tracking-wider font-medium mb-1.5">错误</div>
+                <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs ring-1 ring-red-200 dark:ring-red-800">
                   {log.error}
                 </div>
               </div>
@@ -516,15 +601,15 @@ export default function Logs() {
   }
 
   return (
-    <div className="p-6 h-full flex flex-col">
+    <div className="p-8 h-full flex flex-col animate-fade-in">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">调用日志</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">调用日志</h1>
+          <p className="text-gray-400 mt-1 text-sm">
             实时监控和历史记录
             {activeRequests.length > 0 && (
-              <span className="ml-2 text-yellow-600">
+              <span className="ml-2 text-amber-600 font-medium">
                 · {activeRequests.length} 个请求进行中
               </span>
             )}
@@ -533,7 +618,7 @@ export default function Logs() {
         <div className="flex gap-2">
           <button
             onClick={() => handleExport('json')}
-            className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+            className="px-3.5 py-2 text-sm bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 font-medium shadow-sm"
           >
             导出 JSON
           </button>
@@ -541,11 +626,11 @@ export default function Logs() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4 mb-4">
+      <div className="flex gap-3 mb-5">
         <select
           value={filter.platformId}
           onChange={(e) => setFilter({ ...filter, platformId: e.target.value })}
-          className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+          className="px-3.5 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
         >
           <option value="">全部平台</option>
           {platforms.map((p) => (
@@ -555,7 +640,7 @@ export default function Logs() {
         <select
           value={filter.status}
           onChange={(e) => setFilter({ ...filter, status: e.target.value })}
-          className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+          className="px-3.5 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
         >
           <option value="">全部状态</option>
           <option value="success">成功 (2xx)</option>
@@ -564,31 +649,34 @@ export default function Logs() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden flex gap-4">
+      <div className="flex-1 overflow-hidden flex">
         {/* Log List */}
-        <div className={`flex-1 overflow-auto space-y-2 ${selectedLog ? 'w-1/2' : 'w-full'}`}>
-          {/* Active Requests */}
+        <div className={`flex-1 min-w-0 overflow-auto space-y-2 ${selectedLog ? 'pr-4' : 'w-full'}`}>
           {activeRequests
             .filter(r => !filter.platformId || r.platformId === filter.platformId)
             .map(request => renderActiveRequest(request))}
 
-          {/* Divider */}
           {activeRequests.length > 0 && filteredLogs.length > 0 && (
-            <div className="flex items-center gap-2 py-2">
-              <div className="flex-1 h-px bg-gray-200"></div>
-              <span className="text-xs text-gray-400">历史记录</span>
-              <div className="flex-1 h-px bg-gray-200"></div>
+            <div className="flex items-center gap-3 py-2">
+              <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700"></div>
+              <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">历史记录</span>
+              <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700"></div>
             </div>
           )}
 
-          {/* History Logs */}
           {loading ? (
             <div className="flex justify-center items-center h-32">
-              <span className="text-gray-500">加载中...</span>
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+                <span className="text-gray-400 text-sm">加载中...</span>
+              </div>
             </div>
           ) : filteredLogs.length === 0 ? (
-            <div className="flex justify-center items-center h-32">
-              <span className="text-gray-500">
+            <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+              <svg className="w-10 h-10 mb-2 text-gray-200 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="text-sm">
                 {activeRequests.length > 0 ? '暂无历史记录' : '暂无日志记录'}
               </span>
             </div>
@@ -599,8 +687,15 @@ export default function Logs() {
           )}
         </div>
 
-        {/* Detail Panel */}
-        {selectedLog && renderDetailPanel()}
+        {selectedLog && (
+          <>
+            <div
+              onMouseDown={() => setIsResizing(true)}
+              className="w-1.5 cursor-col-resize hover:bg-primary-300/50 active:bg-primary-400/50 transition-colors flex-shrink-0 self-stretch rounded-full"
+            />
+            {renderDetailPanel()}
+          </>
+        )}
       </div>
     </div>
   )

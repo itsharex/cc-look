@@ -180,7 +180,7 @@ export class ProxyManager {
         return
       }
 
-      // Fallback 2: 根据 Host 头推断真实目标（反向代理/透明代理场景）
+      // Fallback 2: 根据 Host 头推断真实目标（匿名代理场景）
       const host = req.headers['host'] as string
       if (host) {
         const proxyHosts = [`127.0.0.1:${this.port}`, `localhost:${this.port}`]

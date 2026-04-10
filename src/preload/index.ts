@@ -21,6 +21,8 @@ const api = {
     stopGlobal: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STOP) as Promise<boolean>,
     getGlobalState: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STATUS) as Promise<{ isRunning: boolean; port: number }>,
     abortRequest: (requestId: string) => ipcRenderer.invoke(IPC_CHANNELS.PROXY_ABORT, requestId) as Promise<boolean>,
+    exportCaCert: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_EXPORT_CA_CERT) as Promise<string>,
+    testMitm: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_TEST_MITM) as Promise<{ success: boolean; status?: number; message: string }>,
     onStream: (callback: (event: StreamEvent) => void) => {
       const handler = (_: unknown, data: StreamEvent) => callback(data)
       ipcRenderer.on(IPC_CHANNELS.PROXY_STREAM, handler)
@@ -45,11 +47,6 @@ const api = {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET) as Promise<AppSettings>,
     set: (settings: Partial<AppSettings>) =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings) as Promise<AppSettings>
-  },
-
-  // 调试
-  debug: {
-    testFloatingWindow: () => ipcRenderer.invoke('debug:testFloatingWindow') as Promise<void>
   },
 
   // 更新检查

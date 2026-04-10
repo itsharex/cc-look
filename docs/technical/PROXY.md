@@ -349,3 +349,50 @@ curl http://localhost:5005/openai/v1/chat/completions \
     "stream": true
   }'
 ```
+
+## CC Look HTTP 代理（通用代理）
+
+除了按平台路径前缀路由的代理模式外，CC Look 还内置了一个不受数据库控制的通用 HTTP 代理 (`cc-look`)，用于接管任意 AI 请求，实现免额外配置。
+
+### 功能说明
+
+- **标准 HTTP 代理请求**：客户端发送的请求行中包含完整目标 URL（如 `GET http://api.example.com/path`）时，代理会自动提取目标地址并转发
+- **CONNECT 隧道代理**：支持标准的 `CONNECT` 方法，为 HTTPS 请求建立 TCP 隧道
+- **统一日志记录**：所有通过通用代理转发的请求统一记录在 `cc-look` 虚拟平台下
+- **零配置接管**：客户端只需设置 HTTP 代理环境变量即可生效，无需为每个平台单独配置 pathPrefix
+
+### 使用方式
+
+#### 方式一：设置环境变量（推荐）
+
+```bash
+export HTTP_PROXY=http://localhost:5005
+export HTTPS_PROXY=http://localhost:5005
+```
+
+设置后，支持系统代理或读取 `HTTP_PROXY`/`HTTPS_PROXY` 环境变量的 AI SDK / 客户端会自动通过 CC Look 发送请求。
+
+#### 方式二：curl 直接通过代理
+
+```bash
+curl -x http://localhost:5005 https://api.openai.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+```
+
+### 监控能力说明
+
+| 请求类型 | 监控能力 |
+|---------|---------|
+| 标准 HTTP 代理（明文） | 完整支持：日志记录、Token 统计、SSE 流式解析、浮动窗口 |
+| CONNECT 隧道（HTTPS） | 连接级监控：记录目标地址、连接时长、连接错误 |
+
+### 注意事项
+
+- `cc-look` 是虚拟平台，**不能在前端编辑或删除**
+- 为了避免与现有平台路由冲突，启动代理服务时不会将 `cc-look` 作为普通路径前缀平台注册
+- 首次启动应用时，数据库会自动创建 `cc-look` 平台记录用于外键约束和日志归类

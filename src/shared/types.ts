@@ -80,6 +80,8 @@ export const IPC_CHANNELS = {
   PROXY_STATUS: 'proxy:status',
   PROXY_STREAM: 'proxy:stream',
   PROXY_ABORT: 'proxy:abort',
+  PROXY_EXPORT_CA_CERT: 'proxy:exportCaCert',
+  PROXY_TEST_MITM: 'proxy:testMitm',
 
   // 日志
   LOG_GET_ALL: 'log:getAll',

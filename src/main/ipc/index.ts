@@ -3,13 +3,77 @@ import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type St
 import * as db from '../database'
 import { ProxyManager } from '../proxy'
 import { floatingWindowManager } from '../floatingWindow'
+import * as http from 'http'
 import * as https from 'https'
+import * as tls from 'tls'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import { platform } from 'os'
+import { getCaCertPem } from '../proxy/cert'
+
+const execAsync = promisify(exec)
+
+async function getMacOsCaStatus(): Promise<'trusted' | 'installed_untrusted' | 'not_installed'> {
+  try {
+    // 1. 检查证书是否存在于 keychain 中
+    const { stdout: findOut } = await execAsync('security find-certificate -c "CC Look CA" -Z 2>/dev/null || true')
+    const isInstalled = findOut.includes('CC Look CA') || findOut.includes('SHA-1')
+
+    if (!isInstalled) {
+      return 'not_installed'
+    }
+
+    // 2. 检查信任设置
+    const { stdout: adminOut } = await execAsync('security dump-trust-settings -d 2>/dev/null || true')
+    const { stdout: userOut } = await execAsync('security dump-trust-settings 2>/dev/null || true')
+
+    const isTrusted = (text: string): boolean => {
+      if (!text.includes('CC Look CA')) return false
+      const blocks = text.split(/(?=Cert \d+:)/g)
+      for (const block of blocks) {
+        if (block.includes('CC Look CA') && /kSecTrustSettingsResultTrust(As)?Root/.test(block)) {
+          return true
+        }
+      }
+      return false
+    }
+
+    if (isTrusted(adminOut) || isTrusted(userOut)) return 'trusted'
+    return 'installed_untrusted'
+  } catch {
+    return 'not_installed'
+  }
+}
+
+async function getWindowsCaStatus(): Promise<'trusted' | 'installed_untrusted' | 'not_installed'> {
+  try {
+    const { stdout } = await execAsync('powershell.exe -Command "Get-ChildItem -Path Cert:\\LocalMachine\\Root | Where-Object { $_.Subject -like \"*CC Look CA*\" }"')
+    if (!stdout.includes('CC Look CA')) return 'not_installed'
+
+    const { stdout: trustOut } = await execAsync('powershell.exe -Command "$cert = Get-ChildItem -Path Cert:\\LocalMachine\\Root | Where-Object { $_.Subject -like \"*CC Look CA*\" }; if ($cert) { $cert | Format-List }"')
+    // Windows 中存在于 Root store 通常意味着已信任，暂时统一返回 trusted
+    return 'trusted'
+  } catch {
+    return 'not_installed'
+  }
+}
+
+async function getSystemCaStatus(): Promise<'trusted' | 'installed_untrusted' | 'not_installed'> {
+  const os = platform()
+  if (os === 'darwin') {
+    return getMacOsCaStatus()
+  }
+  if (os === 'win32') {
+    return getWindowsCaStatus()
+  }
+  return 'not_installed'
+}
 
 const proxyManager = new ProxyManager()
 let mainWindow: BrowserWindow | null = null
 
 // 当前版本
-const CURRENT_VERSION = '1.2.1'
+const CURRENT_VERSION = '1.3.0'
 
 export function setupIpcHandlers(): void {
   mainWindow = BrowserWindow.getAllWindows()[0]
@@ -33,13 +97,28 @@ export function setupIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.PLATFORM_CREATE, (_, data: Omit<Platform, 'id' | 'createdAt' | 'updatedAt'>): Platform => {
     console.log(`[IPC] 创建平台: ${data.name}`)
     const platform = db.createPlatform(data)
-    // 注册平台到代理管理器
-    proxyManager.registerPlatform(platform)
+    // 注册平台到代理管理器（跳过虚拟平台）
+    if (platform.id !== 'cc-look') {
+      proxyManager.registerPlatform(platform)
+    }
     return platform
   })
 
   ipcMain.handle(IPC_CHANNELS.PLATFORM_UPDATE, async (_, id: string, updates: Partial<Platform>): Promise<Platform | null> => {
     console.log(`[IPC] 更新平台: ${id}`)
+    if (id === 'cc-look') {
+      // 只允许修改 enabled，禁止修改其他核心字段
+      const safeUpdates: Partial<Platform> = {}
+      if (updates.enabled !== undefined) {
+        safeUpdates.enabled = updates.enabled
+      }
+      if (Object.keys(safeUpdates).length === 0) {
+        console.log('[IPC] 虚拟平台 cc-look 不支持修改核心字段')
+        return db.getPlatformById(id)
+      }
+      const platform = db.updatePlatform(id, safeUpdates)
+      return platform
+    }
     const platform = db.updatePlatform(id, updates)
 
     // 更新代理管理器中的平台配置
@@ -52,6 +131,10 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.PLATFORM_DELETE, (_, id: string): boolean => {
     console.log(`[IPC] 删除平台: ${id}`)
+    if (id === 'cc-look') {
+      console.log('[IPC] 禁止删除虚拟平台 cc-look')
+      return false
+    }
     proxyManager.unregisterPlatform(id)
     return db.deletePlatform(id)
   })
@@ -69,8 +152,8 @@ export function setupIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.PROXY_START, async (): Promise<boolean> => {
     console.log('[IPC] 启动代理服务')
 
-    // 注册所有启用的平台
-    const platforms = db.getAllPlatforms().filter(p => p.enabled)
+    // 注册所有启用的平台（跳过虚拟的 cc-look 平台）
+    const platforms = db.getAllPlatforms().filter(p => p.enabled && p.id !== 'cc-look')
     for (const platform of platforms) {
       proxyManager.registerPlatform(platform)
     }
@@ -101,6 +184,91 @@ export function setupIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.PROXY_ABORT, (_, requestId: string): boolean => {
     console.log(`[IPC] 中止请求: ${requestId}`)
     return proxyManager.abortRequest(requestId)
+  })
+
+  // 导出 MITM CA 证书
+  ipcMain.handle(IPC_CHANNELS.PROXY_EXPORT_CA_CERT, (): string => {
+    console.log('[IPC] 导出 CA 证书')
+    return getCaCertPem()
+  })
+
+  // 测试 MITM 代理是否正常工作
+  ipcMain.handle(IPC_CHANNELS.PROXY_TEST_MITM, async (): Promise<{ success: boolean; status?: number; message: string }> => {
+    console.log('[IPC] 测试 MITM 代理')
+    const proxyPort = proxyManager.getPort()
+    const caPem = getCaCertPem()
+    const targetHost = 'www.baidu.com'
+
+    const mitmTest = (): Promise<{ success: boolean; status?: number; message: string }> => {
+      return new Promise((resolve) => {
+        const proxyReq = http.request({
+          host: '127.0.0.1',
+          port: proxyPort,
+          method: 'CONNECT',
+          path: `${targetHost}:443`
+        })
+
+        proxyReq.on('connect', (res, socket) => {
+          if (res.statusCode !== 200) {
+            resolve({ success: false, message: `CONNECT 失败，状态码 ${res.statusCode}` })
+            return
+          }
+
+          const request = https.get({
+            host: targetHost,
+            socket,
+            path: '/',
+            agent: false,
+            ca: caPem,
+            rejectUnauthorized: true
+          }, (httpsRes) => {
+            const status = httpsRes.statusCode || 0
+            httpsRes.resume()
+            if (status >= 200 && status < 400) {
+              resolve({ success: true, status, message: 'MITM 链路正常' })
+            } else {
+              resolve({ success: false, status, message: `代理返回异常状态码 ${status}` })
+            }
+          })
+
+          request.on('error', (err) => {
+            resolve({ success: false, message: err.message })
+          })
+        })
+
+        proxyReq.on('error', () => {
+          resolve({ success: false, message: `无法连接到代理服务（127.0.0.1:${proxyPort}），请确认代理已启动` })
+        })
+
+        proxyReq.end()
+      })
+    }
+
+    // 第一步：注入 CA 验证 MITM 链路本身是否正常
+    const linkResult = await mitmTest()
+    if (!linkResult.success) {
+      return { success: false, status: linkResult.status, message: `❌ ${linkResult.message}` }
+    }
+
+    // 第二步：检测系统是否信任了 CC Look CA 证书
+    const trustStatus = await getSystemCaStatus()
+    if (trustStatus === 'trusted') {
+      return { success: true, status: linkResult.status, message: `✅ 代理测试成功，HTTP 状态码 ${linkResult.status}，系统已信任 CC Look CA 证书` }
+    }
+
+    if (trustStatus === 'installed_untrusted') {
+      return {
+        success: true,
+        status: linkResult.status,
+        message: '⚠️ MITM 链路正常，但系统尚未信任 CC Look CA 证书。实际客户端可能会报证书错误，请按照说明安装并信任证书。'
+      }
+    }
+
+    return {
+      success: false,
+      status: linkResult.status,
+      message: '❌ 未检测到 CC Look CA 证书，请先下载并安装证书。'
+    }
   })
 
   // ==================== 日志管理 ====================
@@ -147,36 +315,6 @@ export function setupIpcHandlers(): void {
     }
 
     return newSettings
-  })
-
-  // ==================== 调试工具 ====================
-
-  ipcMain.handle('debug:testFloatingWindow', async (): Promise<void> => {
-    console.log('[IPC] 测试浮动窗口')
-
-    const testRequestId = `test-${Date.now()}`
-    const testContent = '这是一段测试内容，用于验证浮动窗口的显示效果。每一句话都会追加到窗口中，就像真实的流式输出一样。'
-
-    // 创建窗口
-    floatingWindowManager.createWindow(testRequestId)
-    floatingWindowManager.sendContent(testRequestId, '', 'start')
-
-    // 模拟流式输出
-    let charIndex = 0
-    const totalChars = 300
-    const interval = setInterval(() => {
-      if (charIndex >= totalChars) {
-        clearInterval(interval)
-        floatingWindowManager.sendContent(testRequestId, '', 'end')
-        floatingWindowManager.scheduleClose(testRequestId, 3000)
-        return
-      }
-
-      // 每次输出一个字符
-      const char = testContent[charIndex % testContent.length]
-      floatingWindowManager.sendContent(testRequestId, char, 'content')
-      charIndex++
-    }, 100) // 每100ms输出一个字符
   })
 
   // ==================== 更新检查 ====================
@@ -255,8 +393,8 @@ export function setupIpcHandlers(): void {
 
   // ==================== 自动启动代理服务 ====================
 
-  // 注册所有启用的平台并启动代理服务
-  const platforms = db.getAllPlatforms().filter(p => p.enabled)
+  // 注册所有启用的平台并启动代理服务（跳过虚拟的 cc-look 平台）
+  const platforms = db.getAllPlatforms().filter(p => p.enabled && p.id !== 'cc-look')
   for (const platform of platforms) {
     proxyManager.registerPlatform(platform)
   }

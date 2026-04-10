@@ -294,25 +294,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Debug */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-gray-100 dark:border-gray-700 shadow-card">
-          <div className="flex items-center gap-2.5 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-              <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-              </svg>
-            </div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">调试工具</h3>
-          </div>
-          <button
-            onClick={() => window.api.debug.testFloatingWindow()}
-            className="px-4 py-2.5 bg-gray-900 dark:bg-gray-100 dark:text-gray-900 text-white dark:text-gray-900 rounded-xl hover:bg-gray-800 dark:hover:bg-gray-200 text-sm font-medium transition-colors"
-          >
-            测试浮动窗口
-          </button>
-          <p className="text-xs text-gray-400 mt-2">点击测试浮动窗口效果（无需开启设置）</p>
-        </div>
-
         {/* About */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-gray-100 dark:border-gray-700 shadow-card">
           <div className="flex items-center gap-2.5 mb-4">
@@ -324,7 +305,7 @@ export default function Settings() {
             <h3 className="font-semibold text-gray-900 dark:text-gray-100">关于</h3>
           </div>
           <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2 pl-10">
-            <p className="font-semibold text-gray-900 dark:text-gray-100">CC Look v1.2.1</p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">CC Look v1.3.0</p>
             <p className="text-gray-400">本地 AI API 代理软件 - 开源免费</p>
             <p>
               <a

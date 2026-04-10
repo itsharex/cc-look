@@ -250,6 +250,17 @@ export async function initDatabase(): Promise<void> {
     console.log('[Database] 默认平台已添加')
   }
 
+  // 确保虚拟的 CC Look HTTP 代理平台存在（用于记录通用 HTTP 代理请求日志）
+  const ccLookResult = db.exec('SELECT id FROM platforms WHERE id = ?', ['cc-look'])
+  if (ccLookResult.length === 0 || ccLookResult[0].values.length === 0) {
+    db.run(
+      `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ['cc-look', 'CC Look HTTP Proxy', 'openai', '', '/cc-look', 0, 0, 0]
+    )
+    console.log('[Database] 已添加 CC Look HTTP Proxy 虚拟平台')
+  }
+
   saveDatabase()
   console.log('[Database] 初始化完成')
 }

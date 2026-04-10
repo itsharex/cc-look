@@ -4,11 +4,13 @@ import { type Platform, DEFAULT_SETTINGS } from '@shared/types'
 import { v4 as uuidv4 } from 'uuid'
 import * as http from 'http'
 import * as https from 'https'
+import * as tls from 'tls'
 import * as zlib from 'zlib'
 import * as net from 'net'
 import * as db from '../database'
 import { sendStreamEvent } from '../ipc'
 import { floatingWindowManager } from '../floatingWindow'
+import { getOrGenerateCert } from './cert'
 
 // 活跃请求信息
 interface ActiveConnection {
@@ -17,6 +19,18 @@ interface ActiveConnection {
   platform: Platform
   mainWindow: BrowserWindow | null
   requestId: string
+}
+
+// 虚拟的 CC Look HTTP 代理平台（不受数据库控制）
+const CC_LOOK_HTTP_PROXY_PLATFORM: Platform = {
+  id: 'cc-look',
+  name: 'CC Look HTTP Proxy',
+  protocol: 'openai',
+  baseUrl: '',
+  pathPrefix: '',
+  enabled: true,
+  createdAt: 0,
+  updatedAt: 0
 }
 
 export class ProxyManager {
@@ -113,6 +127,18 @@ export class ProxyManager {
       next();
     });
 
+    // 标准 HTTP 代理请求处理（请求行中包含完整 URL，如 GET http://example.com/path）
+    app.use((req: Request, res: Response, next) => {
+      const rawUrl = req.url
+      console.log(`[Proxy Debug] app.use 命中: method=${req.method}, req.url="${rawUrl}", req.path="${req.path}"`)
+      if (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'))) {
+        console.log(`[Proxy] 收到标准 HTTP 代理请求: ${req.method} ${rawUrl}`)
+        this.handleHttpProxyRequest(req, res, mainWindow, rawUrl)
+        return
+      }
+      next()
+    })
+
     // 健康检查
     app.get('/health', (_req: Request, res: Response) => {
       res.json({
@@ -121,7 +147,11 @@ export class ProxyManager {
         platforms: Array.from(this.platforms.values()).map(p => ({
           name: p.name,
           pathPrefix: p.pathPrefix
-        }))
+        })),
+        httpProxy: {
+          enabled: true,
+          platformId: CC_LOOK_HTTP_PROXY_PLATFORM.id
+        }
       })
     })
 
@@ -143,20 +173,26 @@ export class ProxyManager {
     })
 
     return new Promise((resolve) => {
-      this.server = app.listen(this.port, () => {
-        console.log(`[Proxy] 代理服务器已启动，监听端口 ${this.port}`)
-        console.log(`[Proxy] 已注册平台: ${Array.from(this.platforms.values()).map(p => `${p.name}(${p.pathPrefix})`).join(', ')}`)
-        this.isRunning = true
-        if (this.server) {
-          // 0 表示不限时
-          this.server.timeout = serverTimeout === 0 ? 0 : serverTimeout
-          this.server.keepAliveTimeout = keepAliveTimeout === 0 ? 0 : keepAliveTimeout
-          console.log(`[Proxy] 超时设置 - 服务器: ${serverTimeout === 0 ? '不限时' : serverTimeout + 'ms'}, Keep-Alive: ${keepAliveTimeout === 0 ? '不限时' : keepAliveTimeout + 'ms'}`)
+      // 显式创建 http.Server，确保 connect 事件稳定触发
+      // 注意：Node.js 收到 CONNECT 时会同时触发 request 和 connect 事件
+      // 对于 CONNECT，res.end() 会向 socket 写入一个普通 HTTP 200 响应，
+      // 这会和 'connect' 事件处理器写出的 "200 Connection Established" 冲突，
+      // 导致 Node.js http.request 客户端读到 404 或异常响应。
+      // 因此我们让 CONNECT 完全避开 Express，由 connect 事件独占 socket。
+      this.server = http.createServer((req, res) => {
+        if (req.method === 'CONNECT') {
+          // 不调用 res.end()，也不交给 Express，让 connect 事件接管 socket
+          return
         }
-        resolve(true)
+        app(req, res)
       })
 
-      this.server?.on('error', (error: NodeJS.ErrnoException) => {
+      this.server.on('connect', (req: http.IncomingMessage, clientSocket: net.Socket, head: Buffer) => {
+        console.log(`[Proxy] 收到 CONNECT 请求: ${req.url}`)
+        this.handleConnectRequest(req, clientSocket, head, mainWindow)
+      })
+
+      this.server.on('error', (error: NodeJS.ErrnoException) => {
         if (error.code === 'EADDRINUSE') {
           console.error(`[Proxy] 端口 ${this.port} 已被占用`)
         } else {
@@ -164,6 +200,17 @@ export class ProxyManager {
         }
         this.isRunning = false
         resolve(false)
+      })
+
+      this.server.listen(this.port, () => {
+        console.log(`[Proxy] 代理服务器已启动，监听端口 ${this.port}`)
+        console.log(`[Proxy] 已注册平台: ${Array.from(this.platforms.values()).map(p => `${p.name}(${p.pathPrefix})`).join(', ')}`)
+        this.isRunning = true
+        // 0 表示不限时
+        this.server!.timeout = serverTimeout === 0 ? 0 : serverTimeout
+        this.server!.keepAliveTimeout = keepAliveTimeout === 0 ? 0 : keepAliveTimeout
+        console.log(`[Proxy] 超时设置 - 服务器: ${serverTimeout === 0 ? '不限时' : serverTimeout + 'ms'}, Keep-Alive: ${keepAliveTimeout === 0 ? '不限时' : keepAliveTimeout + 'ms'}`)
+        resolve(true)
       })
     })
   }
@@ -231,11 +278,130 @@ export class ProxyManager {
     return true
   }
 
+  // 处理标准 HTTP 代理请求（请求行中包含完整 URL）
+  private async handleHttpProxyRequest(
+    req: Request,
+    res: Response,
+    mainWindow: BrowserWindow | null,
+    targetUrl: string
+  ): Promise<void> {
+    try {
+      const url = new URL(targetUrl)
+      const proxyPlatform: Platform = {
+        ...CC_LOOK_HTTP_PROXY_PLATFORM,
+        baseUrl: `${url.protocol}//${url.host}`
+      }
+      console.log(`[Proxy Debug] handleHttpProxyRequest 准备转发: platformId=${proxyPlatform.id}, baseUrl=${proxyPlatform.baseUrl}, actualPath=${url.pathname + url.search}`)
+      await this.handleRequest(proxyPlatform, req, res, mainWindow, targetUrl, url.pathname + url.search)
+    } catch (err) {
+      console.error(`[Proxy] HTTP 代理请求处理失败:`, err)
+      if (!res.headersSent) {
+        res.status(400).json({ error: 'Invalid proxy target URL', message: (err as Error).message })
+      }
+    }
+  }
+
+  // 处理 CONNECT 请求（HTTPS 隧道代理）
+  private handleConnectRequest(
+    req: http.IncomingMessage,
+    clientSocket: net.Socket,
+    head: Buffer,
+    mainWindow: BrowserWindow | null
+  ): void {
+    const startTime = Date.now()
+    const requestId = uuidv4()
+    const target = req.url || ''
+
+    console.log(`[Proxy] 收到 CONNECT 请求: ${target}`)
+
+    // 记录连接开始
+    sendStreamEvent(mainWindow, {
+      platformId: CC_LOOK_HTTP_PROXY_PLATFORM.id,
+      requestId,
+      type: 'start',
+      timestamp: Date.now(),
+      content: JSON.stringify({ method: 'CONNECT', target })
+    })
+
+    const [hostname, _portStr] = target.split(':')
+
+    // 返回 200，让客户端开始与我们的 MITM 证书进行 TLS 握手
+    clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+
+    // 为当前域名生成自签名证书
+    const { key, cert } = getOrGenerateCert(hostname)
+
+    // MITM TLS 服务端
+    const tlsSocket = new tls.TLSSocket(clientSocket, {
+      isServer: true,
+      secureContext: tls.createSecureContext({ key, cert })
+    })
+
+    tlsSocket.on('error', (err) => {
+      console.error(`[Proxy] MITM TLS 错误: ${target}`, err.message)
+      if (!clientSocket.destroyed) clientSocket.destroy()
+      sendStreamEvent(mainWindow, {
+        platformId: CC_LOOK_HTTP_PROXY_PLATFORM.id,
+        requestId,
+        type: 'error',
+        content: err.message,
+        timestamp: Date.now()
+      })
+    })
+
+    tlsSocket.once('secure', () => {
+      console.log(`[Proxy] MITM TLS 握手成功: ${target}`)
+
+      // 创建内部的 mini express 应用处理解密后的 HTTP 请求
+      const mitmApp = express()
+      mitmApp.use(express.json({ limit: '10mb' }))
+      mitmApp.use((_req: Request, _res: Response, next) => {
+        ;(_req as any).startTime = Date.now()
+        ;(_req as any).requestBody = _req.body
+        ;(_req as any).requestId = uuidv4()
+        next()
+      })
+
+      mitmApp.all('*', async (innerReq: Request, innerRes: Response) => {
+        console.log(`[Proxy] MITM 解密后请求: ${innerReq.method} ${innerReq.url}`)
+        const proxyPlatform: Platform = {
+          ...CC_LOOK_HTTP_PROXY_PLATFORM,
+          baseUrl: `https://${hostname}`
+        }
+        await this.handleRequest(
+          proxyPlatform,
+          innerReq,
+          innerRes,
+          mainWindow,
+          `https://${hostname}${innerReq.url}`,
+          innerReq.url || '/'
+        )
+      })
+
+      const mitmServer = http.createServer()
+      mitmServer.on('request', (innerReq, innerRes) => {
+        mitmApp(innerReq as any, innerRes as any, () => {})
+      })
+      mitmServer.emit('connection', tlsSocket)
+    })
+
+    clientSocket.on('close', () => {
+      sendStreamEvent(mainWindow, {
+        platformId: CC_LOOK_HTTP_PROXY_PLATFORM.id,
+        requestId,
+        type: 'end',
+        timestamp: Date.now()
+      })
+    })
+  }
+
   private async handleRequest(
     platform: Platform,
     req: Request,
     res: Response,
-    mainWindow: BrowserWindow | null
+    mainWindow: BrowserWindow | null,
+    targetUrlOverride?: string,
+    actualPathOverride?: string
   ): Promise<void> {
     const startTime = (req as any).startTime || Date.now()
     const requestBody = (req as any).requestBody
@@ -255,8 +421,11 @@ export class ProxyManager {
     })
 
     // 去掉路径前缀，得到实际要转发的路径
-    const actualPath = req.path.slice(platform.pathPrefix.length) || '/'
-    const targetUrl = `${platform.baseUrl}${actualPath}`
+    const actualPath = actualPathOverride || (req.path.slice(platform.pathPrefix.length) || '/')
+    const targetUrl = targetUrlOverride || `${platform.baseUrl}${actualPath}`
+    if (platform.id === 'cc-look') {
+      console.log(`[Proxy Debug] cc-look handleRequest 开始处理: method=${req.method}, req.path="${req.path}", actualPath="${actualPath}", targetUrl="${targetUrl}", body=${JSON.stringify(requestBody).slice(0, 200)}`)
+    }
     console.log(`[Proxy] ${platform.name} - 原始路径: ${req.path}, 去掉前缀后: ${actualPath}`)
     console.log(`[Proxy] ${platform.name} - 转发到: ${targetUrl}`)
 
@@ -917,10 +1086,7 @@ export class ProxyManager {
       // 使用过滤后的请求头（如果提供）
       const requestHeaders = filteredHeaders || {}
 
-      console.log(`[Proxy Debug] baseUrl: ${platform.baseUrl}`)
-      console.log(`[Proxy Debug] pathPrefix: ${platform.pathPrefix}`)
-      console.log(`[Proxy Debug] req.path: ${req.path}`)
-      console.log(`[Proxy Debug] actualPath: ${logPath}`)
+      console.log(`[Proxy Debug] createLog called: platformId=${platform.id}, name=${platform.name}, status=${responseStatus}, path=${logPath}, duration=${duration}, error=${error || 'none'}`)
 
       db.createLog({
         platformId: platform.id,

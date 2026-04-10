@@ -6,8 +6,13 @@
     "output": "release/${version}"
   },
   "files": [
-    "out/**/*",
-    "resources/**/*"
+    "out/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "resources/icon.png",
+      "to": "icon.png"
+    }
   ],
   "mac": {
     "category": "public.app-category.developer-tools",

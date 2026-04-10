@@ -2,10 +2,20 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { setupIpcHandlers } from './ipc'
 import { initDatabase } from './database'
+import { createTray, isAppQuitting } from './tray'
+import * as db from './database'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+
+function isMinimizeToTray(): boolean {
+  try {
+    return db.getSettings().minimizeToTray
+  } catch {
+    return true
+  }
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -33,6 +43,17 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // 关闭窗口时最小化到托盘（如果启用）
+  mainWindow.on('close', (event) => {
+    if (!isAppQuitting() && isMinimizeToTray()) {
+      event.preventDefault()
+      mainWindow?.hide()
+      if (process.platform === 'darwin') {
+        app.dock.hide()
+      }
+    }
+  })
+
   // 开发模式下加载 dev server，生产模式下加载本地文件
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -54,20 +75,28 @@ app.whenReady().then(async () => {
   // 创建窗口
   createWindow()
 
+  // 创建系统托盘
+  createTray()
+
   // 设置 IPC 处理器 (必须在 createWindow 之后，因为需要获取 mainWindow)
   setupIpcHandlers()
 
   // macOS 激活应用时创建窗口
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      win.show()
+      win.focus()
+    } else {
       createWindow()
     }
   })
 })
 
-// 关闭所有窗口时退出 (Windows & Linux)
+// 关闭所有窗口时退出
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  // 未启用最小化到托盘时，直接退出（包括 macOS）
+  if (process.platform !== 'darwin' || !isMinimizeToTray()) {
     app.quit()
   }
 })

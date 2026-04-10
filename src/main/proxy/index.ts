@@ -119,6 +119,12 @@ export class ProxyManager {
     const app = express()
     app.use(express.json({ limit: '10mb' }))
 
+    // DEBUG: 记录所有进入 Express 的请求
+    app.use((req: Request, _res: Response, next) => {
+      console.log(`[Proxy DEBUG] Express received: method=${req.method}, url="${req.url}", path="${req.path}", headers=${JSON.stringify(req.headers)}`)
+      next();
+    });
+
     // 请求计时和日志中间件
     app.use((req: Request, _res: Response, next) => {
       (req as any).startTime = Date.now();
@@ -159,17 +165,41 @@ export class ProxyManager {
     app.all('*', async (req: Request, res: Response) => {
       const platform = this.findPlatformByPath(req.path)
 
-      if (!platform) {
-        console.log(`[Proxy] 未找到匹配的平台: ${req.path}`)
-        res.status(404).json({
-          error: 'Platform not found',
-          path: req.path,
-          availablePrefixes: Array.from(this.platforms.values()).map(p => p.pathPrefix)
-        })
+      if (platform) {
+        await this.handleRequest(platform, req, res, mainWindow)
         return
       }
 
-      await this.handleRequest(platform, req, res, mainWindow)
+      // Fallback: 未匹配到平台时，尝试作为透明代理请求转发
+      const rawUrl = req.url
+
+      // Fallback 1: 标准 HTTP 代理格式（请求行中包含完整目标 URL）
+      if (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'))) {
+        console.log(`[Proxy] 未匹配到平台，作为标准 HTTP 代理请求转发: ${req.method} ${rawUrl}`)
+        await this.handleHttpProxyRequest(req, res, mainWindow, rawUrl)
+        return
+      }
+
+      // Fallback 2: 根据 Host 头推断真实目标（反向代理/透明代理场景）
+      const host = req.headers['host'] as string
+      if (host) {
+        const proxyHosts = [`127.0.0.1:${this.port}`, `localhost:${this.port}`]
+        if (!proxyHosts.includes(host)) {
+          const protocol = (req.headers['x-forwarded-proto'] as string) || 'http'
+          const fallbackUrl = `${protocol}://${host}${rawUrl}`
+          console.log(`[Proxy] 未匹配到平台，根据 Host 头匿名代理转发: ${req.method} ${fallbackUrl}`)
+          await this.handleHttpProxyRequest(req, res, mainWindow, fallbackUrl)
+          return
+        }
+      }
+
+      // 仍无法处理
+      console.log(`[Proxy] 未找到匹配的平台: ${req.path}`)
+      res.status(404).json({
+        error: 'Platform not found',
+        path: req.path,
+        availablePrefixes: Array.from(this.platforms.values()).map(p => p.pathPrefix)
+      })
     })
 
     return new Promise((resolve) => {
@@ -180,7 +210,9 @@ export class ProxyManager {
       // 导致 Node.js http.request 客户端读到 404 或异常响应。
       // 因此我们让 CONNECT 完全避开 Express，由 connect 事件独占 socket。
       this.server = http.createServer((req, res) => {
+        console.log(`[Proxy DEBUG] http.createServer called: method=${req.method}, url="${req.url}"`)
         if (req.method === 'CONNECT') {
+          console.log(`[Proxy DEBUG] CONNECT detected in http.createServer, returning without sending response`)
           // 不调用 res.end()，也不交给 Express，让 connect 事件接管 socket
           return
         }
@@ -188,7 +220,7 @@ export class ProxyManager {
       })
 
       this.server.on('connect', (req: http.IncomingMessage, clientSocket: net.Socket, head: Buffer) => {
-        console.log(`[Proxy] 收到 CONNECT 请求: ${req.url}`)
+        console.log(`[Proxy] 收到 CONNECT 请求: ${req.url}, head.length=${head ? head.length : 0}`)
         this.handleConnectRequest(req, clientSocket, head, mainWindow)
       })
 
@@ -203,7 +235,8 @@ export class ProxyManager {
       })
 
       this.server.listen(this.port, () => {
-        console.log(`[Proxy] 代理服务器已启动，监听端口 ${this.port}`)
+        const addr = this.server!.address()
+        console.log(`[Proxy] 代理服务器已启动，监听端口 ${this.port}, address=${JSON.stringify(addr)}`)
         console.log(`[Proxy] 已注册平台: ${Array.from(this.platforms.values()).map(p => `${p.name}(${p.pathPrefix})`).join(', ')}`)
         this.isRunning = true
         // 0 表示不限时
@@ -326,10 +359,13 @@ export class ProxyManager {
     const [hostname, _portStr] = target.split(':')
 
     // 返回 200，让客户端开始与我们的 MITM 证书进行 TLS 握手
-    clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+    console.log(`[Proxy DEBUG] Writing 200 Connection Established to socket for ${target}`)
+    const written = clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+    console.log(`[Proxy DEBUG] 200 write returned: ${written}`)
 
     // 为当前域名生成自签名证书
     const { key, cert } = getOrGenerateCert(hostname)
+    console.log(`[Proxy DEBUG] Generated cert for hostname: ${hostname}`)
 
     // MITM TLS 服务端
     const tlsSocket = new tls.TLSSocket(clientSocket, {
@@ -382,16 +418,23 @@ export class ProxyManager {
       mitmServer.on('request', (innerReq, innerRes) => {
         mitmApp(innerReq as any, innerRes as any, () => {})
       })
+      console.log(`[Proxy DEBUG] Emitting 'connection' to mitmServer for ${target}`)
       mitmServer.emit('connection', tlsSocket)
+      console.log(`[Proxy DEBUG] Emitted 'connection' to mitmServer for ${target}`)
     })
 
     clientSocket.on('close', () => {
+      console.log(`[Proxy DEBUG] clientSocket closed for ${target}`)
       sendStreamEvent(mainWindow, {
         platformId: CC_LOOK_HTTP_PROXY_PLATFORM.id,
         requestId,
         type: 'end',
         timestamp: Date.now()
       })
+    })
+
+    clientSocket.on('error', (err) => {
+      console.error(`[Proxy DEBUG] clientSocket error for ${target}:`, err.message)
     })
   }
 
